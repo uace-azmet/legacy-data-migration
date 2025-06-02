@@ -30,12 +30,7 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
 
   # Set column name string for the 2003-present period. This list can be found
   # at http://ag.arizona.edu/azmet/raw2003.htm. Note that the soil temperature
-  # depths change between the 1987-2002 and 2003-present periods. We use the
-  # depths from the latter to name these columns instead of generating new
-  # columns for the different depths between the two periods. As we do not
-  # anticipate using soil temperature data, this is of no consequence. However,
-  # this code will need to be changed in order to address this issue if soil
-  # temperature data becomes of interest.
+  # depths change in 1999.
 
   col_names_pre <- c(
     "obs_year",
@@ -146,8 +141,8 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
 
   # We will treat the 1987-2002 and 2003-present periods differently.
 
-  # If in the 1987-2002 period, switch the last two columns. These
-  # changes are described at http://ag.arizona.edu/azmet/raw2003.htm.
+  # If in the 1987-2002 period, switch the last two columns. These changes are
+  # described at http://ag.arizona.edu/azmet/raw2003.htm.
   data_pre_2002 <- read_csv(
     urls_pre_2002,
     col_names = col_names_pre,
@@ -161,7 +156,8 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   # values. Overwrite the first column for all years with four-digit values.
   data_pre_2002 <- data_pre_2002 |>
     mutate(obs_year = ifelse(obs_year < 2000, obs_year + 1900L, obs_year))
-  # Soil temp depths changed in 1999, from 2" and 4" to 4" and 20", respectively.
+  # Soil temp depths changed in 1999, from 2" and 4" to 4" and 20",
+  # respectively.
   data_pre_2002 <- data_pre_2002 |>
     mutate(
       obs_dyly_temp_soil_10cm_max = dplyr::if_else(
@@ -226,8 +222,8 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
 
   # An odd character (".") appears at the end of some data files for some years
   # and some stations. In the R dataframe, this results in a row of NAs. Find
-  # and remove these rows.
-  # stn_data <- stn_data[rowSums(is.na(stn_data)) != ncol(stn_data), ]
+  # and remove these rows. stn_data <- stn_data[rowSums(is.na(stn_data)) !=
+  # ncol(stn_data), ]
   stn_data <- stn_data |> dplyr::filter(!is.na(station_number)) #TODO: might not be an issue
 
   # Replace 'nodata' values in the downloaded AZMET data with 'NA'. Values for
