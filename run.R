@@ -7,6 +7,7 @@ station_info
 
 station_list <- read_csv("azmet-station-list.csv")
 station_list
+source("R/utils.R")
 source("R/azmet_daily_data_download.R")
 source("R/azmet_hourly_data_download.R")
 legacy_daily <- azmet_daily_data_download(station_list, "Tucson")
