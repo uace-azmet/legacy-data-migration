@@ -42,8 +42,8 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       "obs_hrly_wind_vector_dir",
       "obs_hrly_wind_vector_dir_stand_dev",
       "obs_hrly_wind_spd_max",
-      "rETo", #reference ETo
-      "heat_units"
+      "obs_hrly_derived_eto_azmet", # Derived: reference ETo
+      "heat_units" # Derived: 30/12.8 C (Not in modern database)
     )
 
   col_names_post <-
@@ -63,9 +63,9 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       "obs_hrly_wind_vector_dir",
       "obs_hrly_wind_vector_dir_stand_dev",
       "obs_hrly_wind_spd_max",
-      "rETo", #reference ETo
+      "obs_hrly_derived_eto_azmet", # Derived: reference ETo
       "obs_hrly_actual_vp",
-      "DP" #dewpoint, hourly average
+      "obs_hrly_derived_dwpt" # Derived: dewpoint, hourly average
     )
 
   # Set the string elements that together will build the full URL where
@@ -165,7 +165,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
         paste(stn_data$obs_year, stn_data$obs_doy),
         format = "%Y %j"
       ) +
-        hours(obs_hour),
+        lubridate::hours(obs_hour),
       .before = 1
     )
 
@@ -208,32 +208,46 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   stn_data <- stn_data |>
     dplyr::mutate(
       obs_year = lubridate::year(obs_datetime),
-      obs_doy = lubridate::yday(obs_datetime)
+      obs_doy = lubridate::yday(obs_datetime),
+      obs_hour = lubridate::hour(obs_datetime)
     )
 
   # Populate station ID in the format of "az01"
-  station_id <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
-  station_id <- paste0("az", station_id)
+  station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
+  station_id <- paste0("az", station_number)
   stn_data <- stn_data |>
-    mutate(station_id = station_id)
+    mutate(station_id = station_id, station_number = station_number)
 
+  # Populate defaults for some missing/empty columns
+  stn_data <- stn_data |>
+    mutate(
+      obs_seconds = 0,
+      obs_version = 1,
+      obs_creation_reason = "legacy data transcription",
+      obs_needs_review = 0,
+      obs_prg_code = 0428, #"program code"—used to be size of program running on data logger, now just a 4 digit code.
+      obs_hrly_wind_2min_vector_dir = NA_character_,
+      obs_hrly_wind_2min_spd_max = NA_character_,
+      obs_hrly_wind_2min_spd_mean = NA_character_,
+      obs_hrly_wind_2min_timestamp = NA_character_,
+      obs_hrly_bat_volt = NA_character_
+    )
   # RETURN DATA AND CLOSE FUNCTION --------------------
 
   #select columns according to database schema
   stn_data <- stn_data |>
     select(
       station_id,
-      # station_number, #TODO: not sure what this should look like
+      station_number,
       obs_year,
       obs_doy,
       obs_hour,
-      # TODO: not sure about these
-      # obs_seconds,
-      # obs_version,
-      # obs_creation_timestamp,
-      # obs_creation_reason,
-      # obs_needs_review,
-      # obs_prg_code,
+      obs_seconds,
+      obs_version,
+      # obs_creation_timestamp, #omit so it will be populated automatically upon ingest
+      obs_creation_reason,
+      obs_needs_review,
+      obs_prg_code,
       obs_hrly_temp_air,
       obs_hrly_relative_humidity,
       obs_hrly_vpd,
@@ -246,8 +260,12 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_hrly_wind_vector_dir,
       obs_hrly_wind_vector_dir_stand_dev,
       obs_hrly_wind_spd_max,
+      obs_hrly_wind_2min_vector_dir,
+      obs_hrly_wind_2min_spd_max,
+      obs_hrly_wind_2min_spd_mean,
+      obs_hrly_wind_2min_timestamp,
       obs_hrly_actual_vp,
-      # obs_hrly_bat_volt #TODO: some discussion about possibly being able to find this
+      obs_hrly_bat_volt
     )
 
   return(stn_data)
