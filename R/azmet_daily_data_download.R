@@ -156,6 +156,7 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   # values. Overwrite the first column for all years with four-digit values.
   data_pre_2002 <- data_pre_2002 |>
     mutate(obs_year = ifelse(obs_year < 2000, obs_year + 1900L, obs_year))
+
   # Soil temp depths changed in 1999, from 2" and 4" to 4" and 20",
   # respectively.
   data_pre_2002 <- data_pre_2002 |>
@@ -203,15 +204,15 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   )
 
   # Concatenate the data in the row dimension as it is downloaded year-by-year
-  stn_data <- bind_rows(data_pre_2002, data_post_2002)
+  obs_dyly <- bind_rows(data_pre_2002, data_post_2002)
 
   # FORMAT DATA --------------------
 
   # Populate new 'date', columns
-  stn_data <- stn_data |>
+  obs_dyly <- obs_dyly |>
     mutate(
       obs_datetime = as.Date(
-        paste(stn_data$obs_year, stn_data$obs_doy),
+        paste(obs_dyly$obs_year, obs_dyly$obs_doy),
         format = "%Y %j"
       )
     )
@@ -222,28 +223,24 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
 
   # An odd character (".") appears at the end of some data files for some years
   # and some stations. In the R dataframe, this results in a row of NAs. Find
-  # and remove these rows. stn_data <- stn_data[rowSums(is.na(stn_data)) !=
-  # ncol(stn_data), ]
-  stn_data <- stn_data |> dplyr::filter(!is.na(station_number)) #TODO: might not be an issue
+  # and remove these rows.
+  obs_dyly <- obs_dyly |> dplyr::filter(!is.na(station_number)) #TODO: might not be an issue
 
   # Replace 'nodata' values in the downloaded AZMET data with 'NA'. Values for
   # 'nodata' in AZMET data are designated as '999'. However, other similar
   # values also appear (e.g., 999.9 and 9999).
-  stn_data <- stn_data |>
+  obs_dyly <- obs_dyly |>
     mutate(across(
       where(is.numeric),
       \(x) ifelse(x %in% c(999, 999.9, 9999), NA, x)
     ))
-  # stn_data[stn_data == 999] <- NA
-  # stn_data[stn_data == 999.9] <- NA
-  # stn_data[stn_data == 9999] <- NA
 
   # Find and remove duplicate row entries
-  stn_data <- distinct(stn_data)
+  obs_dyly <- distinct(obs_dyly)
 
   # ADDRESS MISSING DAILY ENTRIES --------------------
   # This should correctly account for leap years
-  stn_data <- stn_data |>
+  obs_dyly <- obs_dyly |>
     tidyr::complete(
       obs_datetime = seq(
         lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "year"),
@@ -254,7 +251,7 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
 
   # Fill in values for year, and day-of-year for any date entries
   # that may be missing in the downloaded original data
-  stn_data <- stn_data |>
+  obs_dyly <- obs_dyly |>
     dplyr::mutate(
       obs_year = lubridate::year(obs_datetime),
       obs_doy = lubridate::yday(obs_datetime)
@@ -263,14 +260,14 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   # Populate station ID in the format of "az01"
   station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
   station_id <- paste0("az", station_number)
-  stn_data <- stn_data |>
+  obs_dyly <- obs_dyly |>
     dplyr::mutate(
       station_number = station_number,
       station_id = station_id
     )
 
   # Populate defaults for some missing/empty columns
-  stn_data <- stn_data |>
+  obs_dyly <- obs_dyly |>
     dplyr::mutate(
       obs_hour = 0,
       obs_seconds = 0,
@@ -282,12 +279,70 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_dyly_bat_volt_min = NA_character_,
       obs_dyly_bat_volt_mean = NA_character_,
       obs_dyly_actual_vp_max = NA_character_,
-      obs_dyly_actual_vp_min = NA_character_
+      obs_dyly_actual_vp_min = NA_character_,
+      obs_dyly_wind_2min_spd_mean = NA_character_,
+      obs_dyly_wind_2min_spd_max = NA_character_,
+      obs_dyly_wind_2min_timestamp = NA_character_,
+      obs_dyly_wind_2min_vector_dir = NA_character_
     )
 
   # TODO convert NAs to appropriate values using config file Matt shared.
 
-  stn_data <- stn_data |>
+  # Create derived values table ------------
+  obs_dyly_derived <- obs_dyly |>
+    # do unit conversions
+    # fmt: skip
+    mutate(
+      obs_dyly_derived_temp_air_maxF = c_to_f(obs_dyly_temp_air_max),
+      obs_dyly_derived_temp_air_minF = c_to_f(obs_dyly_temp_air_min),
+      obs_dyly_derived_temp_air_meanF = c_to_f(obs_dyly_temp_air_mean),
+      obs_dyly_derived_sol_rad_total_ly = mjm2_to_ly(obs_dyly_sol_rad_total),
+      obs_dyly_derived_precip_total_in = mm_to_in(obs_dyly_precip_total),
+      obs_dyly_derived_temp_soil_10cm_maxF = c_to_f(obs_dyly_temp_soil_10cm_max),
+      obs_dyly_derived_temp_soil_10cm_minF = c_to_f(obs_dyly_temp_soil_10cm_min),
+      obs_dyly_derived_temp_soil_10cm_meanF = c_to_f(obs_dyly_temp_soil_10cm_mean),
+      obs_dyly_derived_temp_soil_50cm_maxF = c_to_f(obs_dyly_temp_soil_50cm_max),
+      obs_dyly_derived_temp_soil_50cm_minF = c_to_f(obs_dyly_temp_soil_50cm_min),
+      obs_dyly_derived_temp_soil_50cm_meanF = c_to_f(obs_dyly_temp_soil_50cm_mean),
+      obs_dyly_derived_wind_spd_mean_mph = mps_to_mph(obs_dyly_wind_spd_mean),
+      obs_dyly_derived_wind_vector_magnitude_mph = mps_to_mph(obs_dyly_wind_vector_magnitude),
+      obs_dyly_derived_wind_spd_max_mph = mps_to_mph(obs_dyly_wind_spd_max),
+      obs_dyly_derived_dwpt_mean = obs_dyly_derived_dwpt_mean,
+      obs_dyly_derived_dwpt_meanF = c_to_f(obs_dyly_derived_dwpt_mean),
+      obs_dyly_derived_eto_azmet = obs_dyly_derived_eto_azmet,
+      obs_dyly_derived_eto_azmet_in = mm_to_in(obs_dyly_derived_eto_azmet),
+      obs_dyly_derived_eto_pen_mon = obs_dyly_derived_eto_pen_mon,
+      obs_dyly_derived_eto_pen_mon_in = mm_to_in(obs_dyly_derived_eto_pen_mon),
+      obs_dyly_derived_chill_hours_32F = NA_character_,
+      obs_dyly_derived_chill_hours_45F = NA_character_,
+      obs_dyly_derived_chill_hours_68F = NA_character_,
+      obs_dyly_derived_chill_hours_0C = NA_character_,
+      obs_dyly_derived_chill_hours_7C = NA_character_,
+      obs_dyly_derived_chill_hours_20C = NA_character_,
+      obs_dyly_derived_heat_units_7C = NA_character_,
+      obs_dyly_derived_heat_units_10C = NA_character_,
+      obs_dyly_derived_heat_units_13C = NA_character_,
+      obs_dyly_derived_heat_units_3413C = NA_character_,
+      obs_dyly_derived_heat_units_45F = NA_character_,
+      obs_dyly_derived_heat_units_50F = NA_character_,
+      obs_dyly_derived_heat_units_55F = NA_character_,
+      obs_dyly_derived_heat_units_9455F = NA_character_,
+      obs_dyly_derived_heatstress_cotton_meanC = NA_character_,
+      obs_dyly_derived_heatstress_cotton_meanF = NA_character_,
+      obs_dyly_derived_wind_2min_spd_mean_mph = NA_character_,
+      obs_dyly_derived_wind_2min_spd_max_mph = NA_character_,
+    ) |>
+    select(
+      station_id,
+      obs_year,
+      obs_doy,
+      obs_datetime,
+      obs_version,
+      obs_creation_reason,
+      starts_with("obs_dyly_derived_")
+    )
+
+  obs_dyly <- obs_dyly |>
     dplyr::select(
       station_id,
       station_number,
@@ -326,10 +381,29 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_dyly_bat_volt_mean,
       obs_dyly_actual_vp_max,
       obs_dyly_actual_vp_min,
-      obs_dyly_actual_vp_mean
+      obs_dyly_actual_vp_mean,
+      obs_dyly_wind_2min_spd_mean,
+      obs_dyly_wind_2min_spd_max,
+      obs_dyly_wind_2min_timestamp,
+      obs_dyly_wind_2min_vector_dir
     )
-  #TODO: create derived table and return a list of the two tables
 
   # RETURN DATA AND CLOSE FUNCTION --------------------
-  return(stn_data)
+  return(list(obs_dyly = obs_dyly, obs_dyly_derived = obs_dyly_derived))
+}
+
+c_to_f <- function(x) {
+  x * (9 / 5) + 32
+}
+
+mjm2_to_ly <- function(x) {
+  x * 23.9005736137667
+}
+
+mm_to_in <- function(x) {
+  x * 1 / 25.4
+}
+
+mps_to_mph <- function(x) {
+  x * 2.2369362920544
 }
