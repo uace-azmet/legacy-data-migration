@@ -21,10 +21,10 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # AZMET data format changes between the periods 1987-2002 and 2003-present, as
   # the number of variables measured / reported in the data file is different.
 
-  # Set column name string based on the 2003-present period. This list can be
-  # found at http://ag.arizona.edu/azmet/raw2003.htm. Note that the soil
-  # temperature depths change between the 1987-2002 and 2003-present periods.
-  # Heat Units from the 1987-2002 are omitted from the returned dataframe.
+  # Set column names separately for the pre-2003 and 2003-present periods. This
+  # list can be found at http://ag.arizona.edu/azmet/raw2003.htm. Note that the
+  # soil temperature depths change in 1999. Heat Units from the 1987-2002 are
+  # omitted from the returned dataframe.
   col_names_pre <-
     c(
       "obs_year",
@@ -128,7 +128,9 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # values. Overwrite the first column for all years with four-digit values.
   data_pre_2002 <- data_pre_2002 |>
     mutate(obs_year = ifelse(obs_year < 2000, obs_year + 1900L, obs_year))
-  # Soil temp depths changed in 1999, from 2" and 4" to 4" and 20", respectively.
+
+  # Soil temp depths changed in 1999, from 2" and 4" to 4" and 20",
+  # respectively.
   data_pre_2002 <- data_pre_2002 |>
     mutate(
       obs_hrly_temp_soil_10cm = dplyr::if_else(
@@ -153,16 +155,16 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
     )
   )
 
-  # Concatenate the data in the row dimension as it is downloaded year-by-year
-  stn_data <- bind_rows(data_pre_2002, data_post_2002)
+  # Combine pre- and post-2003
+  obs_hrly <- bind_rows(data_pre_2002, data_post_2002)
 
   # FORMAT DATA --------------------
 
   # Populate new `obs_datetime` column
-  stn_data <- stn_data |>
+  obs_hrly <- obs_hrly |>
     mutate(
       obs_datetime = as.Date(
-        paste(stn_data$obs_year, stn_data$obs_doy),
+        paste(obs_hrly$obs_year, obs_hrly$obs_doy),
         format = "%Y %j"
       ) +
         lubridate::hours(obs_hour),
@@ -176,25 +178,25 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # An odd character (".") appears at the end of some data files for some years
   # and some stations. In the R dataframe, this results in a row of NAs. Find
   # and remove these rows.
-  # stn_data <- stn_data[rowSums(is.na(stn_data)) != ncol(stn_data), ]
-  stn_data <- stn_data |> dplyr::filter(!is.na(obs_year)) #TODO: might not be an issue
+
+  obs_hrly <- obs_hrly |> dplyr::filter(!is.na(obs_year)) #TODO: might not be an issue
 
   # Replace 'nodata' values in the downloaded AZMET data with 'NA'. Values for
   # 'nodata' in AZMET data are designated as '999'. However, other similar
   # values also appear (e.g., 999.9 and 9999).
-  stn_data <- stn_data |>
+  obs_hrly <- obs_hrly |>
     mutate(across(
       where(is.numeric),
       \(x) ifelse(x %in% c(999, 999.9, 9999), NA, x)
     ))
 
   # Find and remove duplicate row entries
-  stn_data <- distinct(stn_data)
+  obs_hrly <- distinct(obs_hrly)
 
   # ADDRESS MISSING HOURLY ENTRIES --------------------
 
   # This should correctly account for leap years
-  stn_data <- stn_data |>
+  obs_hrly <- obs_hrly |>
     tidyr::complete(
       obs_datetime = seq(
         lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "year"),
@@ -205,7 +207,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
 
   # Fill in values for year, and day-of-year for any date entries
   # that may be missing in the downloaded original data
-  stn_data <- stn_data |>
+  obs_hrly <- obs_hrly |>
     dplyr::mutate(
       obs_year = lubridate::year(obs_datetime),
       obs_doy = lubridate::yday(obs_datetime),
@@ -215,11 +217,11 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # Populate station ID in the format of "az01"
   station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
   station_id <- paste0("az", station_number)
-  stn_data <- stn_data |>
+  obs_hrly <- obs_hrly |>
     mutate(station_id = station_id, station_number = station_number)
 
   # Populate defaults for some missing/empty columns
-  stn_data <- stn_data |>
+  obs_hrly <- obs_hrly |>
     mutate(
       obs_seconds = 0,
       obs_version = 1,
@@ -232,10 +234,59 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_hrly_wind_2min_timestamp = NA_character_,
       obs_hrly_bat_volt = NA_character_
     )
-  # RETURN DATA AND CLOSE FUNCTION --------------------
+
+  # Create derived table -----------
+  obs_hrly_derived <- obs_hrly |>
+    #do unit conversions
+    # fmt: skip
+    mutate(
+      obs_hrly_derived_temp_airF = c_to_f(obs_hrly_temp_air),
+      obs_hrly_sol_rad_total_ly = mjm2_to_ly(obs_hrly_sol_rad_total),
+      obs_hrly_derived_precip_total_in = mm_to_in(obs_hrly_precip_total),
+      obs_hrly_derived_temp_soil_10cmF = c_to_f(obs_hrly_temp_soil_10cm),
+      obs_hrly_derived_temp_soil_50cmF = c_to_f(obs_hrly_temp_soil_50cm),
+      obs_hrly_derived_wind_spd_mph = mps_to_mph(obs_hrly_wind_spd),
+      obs_hrly_wind_vector_magnitude_mph = mps_to_mph(obs_hrly_wind_vector_magnitude),
+      obs_hrly_derived_wind_spd_max_mph = mps_to_mph(obs_hrly_wind_spd_max),
+      obs_hrly_derived_wind_2min_spd_max_mph = NA_character_,
+      obs_hrly_derived_wind_2min_spd_mean_mph = NA_character_,
+      obs_hrly_derived_dwpt = obs_hrly_derived_dwpt,
+      obs_hrly_derived_dwptF = c_to_f(obs_hrly_derived_dwpt),
+      obs_hrly_derived_eto_azmet = obs_hrly_derived_eto_azmet,
+      obs_hrly_derived_eto_azmet_in = mm_to_in(obs_hrly_derived_eto_azmet),
+      obs_hrly_derived_heatstress_cottonC = NA_character_,
+      obs_hrly_derived_heatstress_cottonF = NA_character_
+    ) |>
+    select(
+      station_id,
+      obs_year,
+      obs_doy,
+      obs_hour,
+      obs_seconds,
+      obs_datetime,
+      obs_version,
+      # obs_creation_timestamp, #omit so it will be populated automatically upon ingest
+      obs_creation_reason,
+      obs_hrly_derived_temp_airF,
+      obs_hrly_sol_rad_total_ly,
+      obs_hrly_derived_precip_total_in,
+      obs_hrly_derived_temp_soil_10cmF,
+      obs_hrly_derived_temp_soil_50cmF,
+      obs_hrly_derived_wind_spd_mph,
+      obs_hrly_wind_vector_magnitude_mph,
+      obs_hrly_derived_wind_spd_max_mph,
+      obs_hrly_derived_wind_2min_spd_max_mph,
+      obs_hrly_derived_wind_2min_spd_mean_mph,
+      obs_hrly_derived_dwpt,
+      obs_hrly_derived_dwptF,
+      obs_hrly_derived_eto_azmet,
+      obs_hrly_derived_eto_azmet_in,
+      obs_hrly_derived_heatstress_cottonC,
+      obs_hrly_derived_heatstress_cottonF
+    )
 
   #select columns according to database schema
-  stn_data <- stn_data |>
+  obs_hrly <- obs_hrly |>
     select(
       station_id,
       station_number,
@@ -268,5 +319,5 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_hrly_bat_volt
     )
 
-  return(stn_data)
+  return(list(obs_hrly = obs_hrly, obs_hrly_derived = obs_hrly_derived))
 }
