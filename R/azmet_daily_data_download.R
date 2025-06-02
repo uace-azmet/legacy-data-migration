@@ -61,8 +61,8 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
     "obs_dyly_wind_vector_dir",
     "obs_dyly_wind_vector_dir_stand_dev",
     "obs_dyly_wind_spd_max",
-    "ETref", #reference ETo
-    "heat_units"
+    "obs_dyly_derived_eto_azmet", # Derived: reference ETo
+    "heat_units" # Derived: heat units (30/12.8C) (not in modern database)
   )
 
   col_names_post <- c(
@@ -89,11 +89,11 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
     "obs_dyly_wind_vector_dir",
     "obs_dyly_wind_vector_dir_stand_dev",
     "obs_dyly_wind_spd_max",
-    "heat_units",
-    "ETref", #reference ETo original
-    "ETref_pm", #reference ETo Penman-Monteith method
+    "heat_units", # Derived: heat units (30/12.8C) (not in modern database)
+    "obs_dyly_derived_eto_azmet", # Derived: reference ETo original
+    "obs_dyly_derived_eto_pen_mon", #Derived: reference ETo Penman-Monteith method
     "obs_dyly_actual_vp_mean",
-    "DP" #dewpoint, daily mean
+    "obs_dyly_derived_dwpt_mean" #Derived: dewpoint, daily mean
   )
 
   # Set the string elements that together will build the full URL where
@@ -265,55 +265,46 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
     )
 
   # Populate station ID in the format of "az01"
-  station_id <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
-  station_id <- paste0("az", station_id)
+  station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
+  station_id <- paste0("az", station_number)
   stn_data <- stn_data |>
-    mutate(station_id = station_id)
+    dplyr::mutate(
+      station_number = station_number,
+      station_id = station_id
+    )
 
-  # RENAME COLUMNS ------------------------------------
-  # and change column types to match database schema
-  # stn_data <-
-  #   stn_data |>
-  #   mutate(
-  #     across(
-  #       c(
-  #         any_of(c(
-  #           "station_number",
-  #           "obs_year",
-  #           "obs_doy",
-  #           "obs_hour",
-  #           "obs_seconds",
-  #           "obs_creation_reason",
-  #           "obs_prg_code"
-  #         )),
-  #         contains("_temp_air_"),
-  #         contains("_relative_humidity_"),
-  #         contains("_vpd_"),
-  #         contains("_sol_rad_"),
-  #         contains("_prcip_"),
-  #         contains("_temp_soil_"),
-  #         contains("_wind_"),
-  #         contains("_actual_vp_")
-  #       ),
-  #       as.character
-  #     ),
-  #     obs_datetime = as.POSIXct(obs_datetime)
-  #   )
+  # Populate defaults for some missing/empty columns
+  stn_data <- stn_data |>
+    dplyr::mutate(
+      obs_hour = 0,
+      obs_seconds = 0,
+      obs_version = 1,
+      obs_creation_reason = "legacy data transcription",
+      obs_needs_review = 0,
+      obs_prg_code = 0428, #"program code"—used to be size of program running on data logger, now just a 4 digit code.
+      obs_dyly_bat_volt_max = NA_character_,
+      obs_dyly_bat_volt_min = NA_character_,
+      obs_dyly_bat_volt_mean = NA_character_,
+      obs_dyly_actual_vp_max = NA_character_,
+      obs_dyly_actual_vp_min = NA_character_
+    )
+
+  # TODO convert NAs to appropriate values using config file Matt shared.
 
   stn_data <- stn_data |>
-    select(
+    dplyr::select(
       station_id,
-      # station_number,
+      station_number,
       obs_year,
       obs_doy,
       obs_datetime,
-      # obs_hour,
-      # obs_seconds,
-      # obs_version,
-      # obs_creation_timestamp,
-      # obs_creation_reason,
-      # obs_needs_review,
-      # obs_prg_code,
+      obs_hour,
+      obs_seconds,
+      obs_version,
+      # obs_creation_timestamp, #omit so it is created automatically on ingest
+      obs_creation_reason,
+      obs_needs_review,
+      obs_prg_code,
       obs_dyly_temp_air_max,
       obs_dyly_temp_air_min,
       obs_dyly_temp_air_mean,
@@ -334,13 +325,14 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_dyly_wind_vector_dir,
       obs_dyly_wind_vector_dir_stand_dev,
       obs_dyly_wind_spd_max,
-      # obs_dyly_bat_volt_max,
-      # obs_dyly_bat_volt_min,
-      # obs_dyly_bat_volt_mean,
-      # obs_dyly_actual_vp_max,
-      # obs_dyly_actual_vp_min,
+      obs_dyly_bat_volt_max,
+      obs_dyly_bat_volt_min,
+      obs_dyly_bat_volt_mean,
+      obs_dyly_actual_vp_max,
+      obs_dyly_actual_vp_min,
       obs_dyly_actual_vp_mean
     )
+  #TODO: create derived table and return a list of the two tables
 
   # RETURN DATA AND CLOSE FUNCTION --------------------
   return(stn_data)
