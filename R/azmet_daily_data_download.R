@@ -232,7 +232,7 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   obs_dyly <- obs_dyly |>
     mutate(across(
       where(is.numeric),
-      \(x) ifelse(abs(x) %in% c(999, 999.9, 9999), NA, x)
+      \(x) ifelse(x %in% c(999, 999.9, 9999), NA, x)
     ))
 
   # Find and remove duplicate row entries
@@ -275,35 +275,18 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_creation_reason = "legacy data transcription",
       obs_needs_review = 0,
       obs_prg_code = 0428, #"program code"—used to be size of program running on data logger, now just a 4 digit code.
-      obs_dyly_bat_volt_max = NA_real_,
-      obs_dyly_bat_volt_min = NA_real_,
-      obs_dyly_bat_volt_mean = NA_real_,
-      obs_dyly_actual_vp_max = NA_real_,
-      obs_dyly_actual_vp_min = NA_real_,
-      obs_dyly_actual_vp_mean = NA_real_,
-      obs_dyly_wind_2min_spd_mean = NA_real_,
-      obs_dyly_wind_2min_spd_max = NA_real_,
-      obs_dyly_wind_2min_timestamp = NA_real_,
-      obs_dyly_wind_2min_vector_dir = NA_real_
-    ) |>
-    # basic range checks
-    dplyr::mutate(
-      obs_dyly_wind_2min_spd_max = dplyr::if_else(
-        !between(obs_dyly_wind_2min_spd_max, 0, 60),
-        NA_real_,
-        obs_dyly_wind_2min_spd_max
-      ),
-      obs_dyly_wind_2min_spd_mean = dplyr::if_else(
-        !between(obs_dyly_wind_2min_spd_mean, 0, 50),
-        NA_real_,
-        obs_dyly_wind_2min_spd_mean
-      ),
-      obs_dyly_wind_2min_vector_dir = dplyr::if_else(
-        !between(obs_dyly_wind_2min_vector_dir, 0, 360),
-        NA_real_,
-        obs_dyly_wind_2min_vector_dir
-      )
+      obs_dyly_bat_volt_max = NA_character_,
+      obs_dyly_bat_volt_min = NA_character_,
+      obs_dyly_bat_volt_mean = NA_character_,
+      obs_dyly_actual_vp_max = NA_character_,
+      obs_dyly_actual_vp_min = NA_character_,
+      obs_dyly_wind_2min_spd_mean = NA_character_,
+      obs_dyly_wind_2min_spd_max = NA_character_,
+      obs_dyly_wind_2min_timestamp = NA_character_,
+      obs_dyly_wind_2min_vector_dir = NA_character_
     )
+
+  # TODO convert NAs to appropriate values using config file Matt shared.
 
   # Create derived values table ------------
   obs_dyly_derived <- obs_dyly |>
@@ -330,24 +313,24 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_dyly_derived_eto_azmet_in = mm_to_in(obs_dyly_derived_eto_azmet),
       obs_dyly_derived_eto_pen_mon = obs_dyly_derived_eto_pen_mon,
       obs_dyly_derived_eto_pen_mon_in = mm_to_in(obs_dyly_derived_eto_pen_mon),
-      obs_dyly_derived_chill_hours_32F = NA_real_,
-      obs_dyly_derived_chill_hours_45F = NA_real_,
-      obs_dyly_derived_chill_hours_68F = NA_real_,
-      obs_dyly_derived_chill_hours_0C = NA_real_,
-      obs_dyly_derived_chill_hours_7C = NA_real_,
-      obs_dyly_derived_chill_hours_20C = NA_real_,
-      obs_dyly_derived_heat_units_7C = NA_real_,
-      obs_dyly_derived_heat_units_10C = NA_real_,
-      obs_dyly_derived_heat_units_13C = NA_real_,
-      obs_dyly_derived_heat_units_3413C = NA_real_,
-      obs_dyly_derived_heat_units_45F = NA_real_,
-      obs_dyly_derived_heat_units_50F = NA_real_,
-      obs_dyly_derived_heat_units_55F = NA_real_,
-      obs_dyly_derived_heat_units_9455F = NA_real_,
-      obs_dyly_derived_heatstress_cotton_meanC = NA_real_,
-      obs_dyly_derived_heatstress_cotton_meanF = NA_real_,
-      obs_dyly_derived_wind_2min_spd_mean_mph = NA_real_,
-      obs_dyly_derived_wind_2min_spd_max_mph = NA_real_,
+      obs_dyly_derived_chill_hours_32F = NA_character_,
+      obs_dyly_derived_chill_hours_45F = NA_character_,
+      obs_dyly_derived_chill_hours_68F = NA_character_,
+      obs_dyly_derived_chill_hours_0C = NA_character_,
+      obs_dyly_derived_chill_hours_7C = NA_character_,
+      obs_dyly_derived_chill_hours_20C = NA_character_,
+      obs_dyly_derived_heat_units_7C = NA_character_,
+      obs_dyly_derived_heat_units_10C = NA_character_,
+      obs_dyly_derived_heat_units_13C = NA_character_,
+      obs_dyly_derived_heat_units_3413C = NA_character_,
+      obs_dyly_derived_heat_units_45F = NA_character_,
+      obs_dyly_derived_heat_units_50F = NA_character_,
+      obs_dyly_derived_heat_units_55F = NA_character_,
+      obs_dyly_derived_heat_units_9455F = NA_character_,
+      obs_dyly_derived_heatstress_cotton_meanC = NA_character_,
+      obs_dyly_derived_heatstress_cotton_meanF = NA_character_,
+      obs_dyly_derived_wind_2min_spd_mean_mph = NA_character_,
+      obs_dyly_derived_wind_2min_spd_max_mph = NA_character_,
     ) |>
     select(
       station_id,
@@ -357,52 +340,6 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_version,
       obs_creation_reason,
       starts_with("obs_dyly_derived_")
-    ) |>
-    #replace NAs and round
-    dplyr::mutate(
-      across(
-        c(
-          obs_dyly_derived_eto_pen_mon_in,
-          obs_dyly_derived_precip_total_in,
-          obs_dyly_derived_sol_rad_total_ly,
-          obs_dyly_derived_eto_azmet_in
-        ),
-        \(x) {
-          dplyr::if_else(
-            is.na(x),
-            "-999.00",
-            as.character(round(x, digits = 2))
-          )
-        }
-      ),
-      across(
-        c(
-          starts_with("obs_dyly_derived_dwpt_"),
-          obs_dyly_derived_eto_pen_mon,
-          starts_with("obs_dyly_derived_heat_units_"),
-          starts_with("obs_dyly_derived_temp_air_"),
-          starts_with("obs_dyly_derived_temp_soil_"),
-          starts_with("obs_dyly_derived_wind_"),
-          starts_with("obs_dyly_derived_heatstress_cotton_"),
-          obs_dyly_derived_eto_azmet,
-          starts_with("obs_dyly_derived_wind_2min_spd_")
-        ),
-        \(x) {
-          dplyr::if_else(
-            is.na(x),
-            "-9999.0",
-            as.character(round(x, digits = 1))
-          )
-        }
-      ),
-      across(
-        c(
-          starts_with("obs_dyly_derived_chill_hours_")
-        ),
-        \(x) {
-          dplyr::if_else(is.na(x), "-99999", as.character(round(x, digits = 0)))
-        }
-      )
     )
 
   obs_dyly <- obs_dyly |>
@@ -449,52 +386,6 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_dyly_wind_2min_spd_max,
       obs_dyly_wind_2min_timestamp,
       obs_dyly_wind_2min_vector_dir
-    ) |>
-    # replace NAs with correct values and round
-    dplyr::mutate(
-      dplyr::across(
-        c(
-          dplyr::starts_with("obs_dyly_actual_vp_"),
-          dplyr::starts_with("obs_dyly_bat_volt_"),
-          obs_dyly_sol_rad_total,
-          obs_dyly_vpd_mean
-        ),
-        \(x) {
-          dplyr::if_else(
-            is.na(x),
-            "-999.00",
-            as.character(round(x, digits = 2))
-          )
-        }
-      ),
-      dplyr::across(
-        c(
-          obs_dyly_precip_total,
-          dplyr::starts_with("obs_dyly_relative_humidity_"),
-          dplyr::starts_with("obs_dyly_temp_air_"),
-          dplyr::starts_with("obs_dyly_temp_soil_"),
-          dplyr::starts_with("obs_dyly_wind_spd_"),
-          obs_dyly_wind_vector_magnitude,
-          dplyr::starts_with("obs_dyly_wind_2min_spd_")
-        ),
-        \(x) {
-          dplyr::if_else(
-            is.na(x),
-            "-9999.0",
-            as.character(round(x, digits = 1))
-          )
-        }
-      ),
-      dplyr::across(
-        c(
-          dplyr::starts_with("obs_dyly_wind_vector_dir"),
-          obs_dyly_wind_2min_vector_dir,
-          obs_dyly_wind_2min_timestamp
-        ),
-        \(x) {
-          dplyr::if_else(is.na(x), "-99999", as.character(round(x, digits = 0)))
-        }
-      )
     )
 
   # RETURN DATA AND CLOSE FUNCTION --------------------
