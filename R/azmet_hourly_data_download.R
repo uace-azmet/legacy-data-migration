@@ -187,7 +187,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   obs_hrly <- obs_hrly |>
     mutate(across(
       where(is.numeric),
-      \(x) ifelse(x %in% c(999, 999.9, 9999), NA, x)
+      \(x) if_else(abs(x) %in% c(999, 999.9, 9999), NA_real_, x)
     ))
 
   # Find and remove duplicate row entries
@@ -228,11 +228,11 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_creation_reason = "legacy data transcription",
       obs_needs_review = 0,
       obs_prg_code = 0428, #"program code"—used to be size of program running on data logger, now just a 4 digit code.
-      obs_hrly_wind_2min_vector_dir = NA_character_,
-      obs_hrly_wind_2min_spd_max = NA_character_,
-      obs_hrly_wind_2min_spd_mean = NA_character_,
-      obs_hrly_wind_2min_timestamp = NA_character_,
-      obs_hrly_bat_volt = NA_character_
+      obs_hrly_wind_2min_vector_dir = NA_real_,
+      obs_hrly_wind_2min_spd_max = NA_real_,
+      obs_hrly_wind_2min_spd_mean = NA_real_,
+      obs_hrly_wind_2min_timestamp = NA_real_,
+      obs_hrly_bat_volt = NA_real_
     )
 
   # Create derived table -----------
@@ -248,14 +248,14 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_hrly_derived_wind_spd_mph = mps_to_mph(obs_hrly_wind_spd),
       obs_hrly_wind_vector_magnitude_mph = mps_to_mph(obs_hrly_wind_vector_magnitude),
       obs_hrly_derived_wind_spd_max_mph = mps_to_mph(obs_hrly_wind_spd_max),
-      obs_hrly_derived_wind_2min_spd_max_mph = NA_character_,
-      obs_hrly_derived_wind_2min_spd_mean_mph = NA_character_,
+      obs_hrly_derived_wind_2min_spd_max_mph = NA_real_,
+      obs_hrly_derived_wind_2min_spd_mean_mph = NA_real_,
       obs_hrly_derived_dwpt = obs_hrly_derived_dwpt,
       obs_hrly_derived_dwptF = c_to_f(obs_hrly_derived_dwpt),
       obs_hrly_derived_eto_azmet = obs_hrly_derived_eto_azmet,
       obs_hrly_derived_eto_azmet_in = mm_to_in(obs_hrly_derived_eto_azmet),
-      obs_hrly_derived_heatstress_cottonC = NA_character_,
-      obs_hrly_derived_heatstress_cottonF = NA_character_
+      obs_hrly_derived_heatstress_cottonC = NA_real_,
+      obs_hrly_derived_heatstress_cottonF = NA_real_
     ) |>
     select(
       station_id,
@@ -283,6 +283,32 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_hrly_derived_eto_azmet_in,
       obs_hrly_derived_heatstress_cottonC,
       obs_hrly_derived_heatstress_cottonF
+    ) |>
+    # Convert NAs
+    mutate(
+      across(
+        c(
+          obs_hrly_derived_eto_azmet_in,
+          obs_hrly_derived_precip_total_in,
+          obs_hrly_sol_rad_total_ly
+        ),
+        \(x) {
+          if_else(is.na(x), "-999.00", as.character(round(x, digits = 2)))
+        }
+      ),
+      across(
+        c(
+          obs_hrly_derived_eto_azmet,
+          starts_with("obs_hrly_derived_dwpt"),
+          starts_with("obs_hrly_derived_heatstress_cotton"),
+          starts_with("obs_hrly_derived_temp_"),
+          starts_with("obs_hrly_derived_wind_spd_"),
+          starts_with("obs_hrly_derived_wind_2min_spd_")
+        ),
+        \(x) {
+          if_else(is.na(x), "-9999.0", as.character(round(x, digits = 1)))
+        }
+      )
     )
 
   #select columns according to database schema
@@ -317,6 +343,37 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_hrly_wind_2min_timestamp,
       obs_hrly_actual_vp,
       obs_hrly_bat_volt
+    ) |>
+    #convert NAs
+    mutate(
+      across(
+        c(
+          obs_hrly_actual_vp,
+          obs_hrly_bat_volt,
+          obs_hrly_sol_rad_total,
+          obs_hrly_vpd
+        ),
+        \(x) if_else(is.na(x), "-999.00", as.character(round(x, digits = 2)))
+      ),
+      across(
+        c(
+          obs_hrly_precip_total,
+          starts_with("obs_hrly_temp_"),
+          starts_with("obs_hrly_wind_spd"),
+          starts_with("obs_hrly_wind_vector_magnitude"),
+          starts_with("obs_hrly_wind_2min_spd_"),
+        ),
+        \(x) if_else(is.na(x), "-9999.0", as.character(round(x, digits = 1)))
+      ),
+      across(
+        c(
+          obs_hrly_relative_humidity,
+          starts_with("obs_hrly_wind_vector_dir"),
+          obs_hrly_wind_2min_vector_dir,
+          obs_hrly_wind_2min_timestamp
+        ),
+        \(x) if_else(is.na(x), "-99999", as.character(round(x, digits = 0)))
+      )
     )
 
   return(list(obs_hrly = obs_hrly, obs_hrly_derived = obs_hrly_derived))
