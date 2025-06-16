@@ -22,7 +22,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # the number of variables measured / reported in the data file is different.
 
   # Set column names separately for the pre-2003 and 2003-present periods. This
-  # list can be found at http://ag.arizona.edu/azmet/raw2003.htm. Note that the
+  # list can be found at https://cales.arizona.edu/azmet/az-docs.htm. Note that the
   # soil temperature depths change in 1999. Heat Units from the 1987-2002 are
   # omitted from the returned dataframe.
   col_names_pre <-
