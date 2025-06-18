@@ -326,6 +326,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
     select(
       station_id,
       station_number,
+      obs_datetime,
       obs_year,
       obs_doy,
       obs_hour,
