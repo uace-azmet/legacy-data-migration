@@ -116,14 +116,21 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
 
   # Recall that AZMET data are provided year-by-year. We will need to
   # combine the annual files.
-  data_pre_2002 <- read_csv(
+  data_pre_2002 <- read_delim(
     urls_pre_2002,
+    delim = ",",
+    escape_backslash = TRUE,
     col_names = col_names_pre,
     col_types = cols(
-      obs_year = col_integer(),
-      obs_doy = col_integer()
-    )
-  )
+      obs_year = col_character(),
+      obs_doy = col_character()
+    ),
+    trim_ws = TRUE
+  ) |>
+    # Sometimes there is an odd end of line character that contaminates the year column
+    mutate(across(c(obs_year, obs_doy), \(x) {
+      str_remove(x, "\\u001a") |> parse_integer()
+    }))
   # Years prior to 2000 are to be two-digit values instead of four-digit
   # values. Overwrite the first column for all years with four-digit values.
   data_pre_2002 <- data_pre_2002 |>
@@ -150,10 +157,14 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
     urls_post_2002,
     col_names = col_names_post,
     col_types = cols(
-      obs_year = col_integer(),
-      obs_doy = col_integer()
-    )
-  )
+      obs_year = col_character(),
+      obs_doy = col_character()
+    ),
+    trim_ws = TRUE
+  ) |>
+    mutate(across(c(obs_year, obs_doy), \(x) {
+      str_remove(x, "\\u001a") |> parse_integer()
+    }))
 
   # Combine pre- and post-2003
   obs_hrly <- bind_rows(data_pre_2002, data_post_2002)
@@ -174,12 +185,6 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # Based on previous work with AZMET data, there are several known formatting
   # bugs in the original / downloaded data files. We will address these
   # individually.
-
-  # An odd character (".") appears at the end of some data files for some years
-  # and some stations. In the R dataframe, this results in a row of NAs. Find
-  # and remove these rows.
-
-  obs_hrly <- obs_hrly |> dplyr::filter(!is.na(obs_year)) #TODO: might not be an issue
 
   # Replace 'nodata' values in the downloaded AZMET data with 'NA'. Values for
   # 'nodata' in AZMET data are designated as '999'. However, other similar
