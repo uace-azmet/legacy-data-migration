@@ -98,13 +98,14 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
 
   # Set the suffix of the data file to be downloaded
   suffix <- "rh.txt"
-
-  urls_pre_2002 <- paste0(
-    baseurl,
-    stn_no,
-    substr(as.character(stn_yrs[stn_yrs <= 2002]), 3, 4),
-    suffix
-  )
+  if (any(stn_yrs <= 2002)) {
+    urls_pre_2002 <- paste0(
+      baseurl,
+      stn_no,
+      substr(as.character(stn_yrs[stn_yrs <= 2002]), 3, 4),
+      suffix
+    )
+  }
   urls_post_2002 <- paste0(
     baseurl,
     stn_no,
@@ -116,42 +117,46 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
 
   # Recall that AZMET data are provided year-by-year. We will need to
   # combine the annual files.
-  data_pre_2002 <- read_delim(
-    urls_pre_2002,
-    delim = ",",
-    escape_backslash = TRUE,
-    col_names = col_names_pre,
-    col_types = cols(
-      obs_year = col_character(),
-      obs_doy = col_character()
-    ),
-    trim_ws = TRUE
-  ) |>
-    # Sometimes there is an odd end of line character that contaminates the year column
-    mutate(across(c(obs_year, obs_doy), \(x) {
-      str_remove(x, "\\u001a") |> parse_integer()
-    }))
-  # Years prior to 2000 are to be two-digit values instead of four-digit
-  # values. Overwrite the first column for all years with four-digit values.
-  data_pre_2002 <- data_pre_2002 |>
-    mutate(obs_year = ifelse(obs_year < 2000, obs_year + 1900L, obs_year))
-
-  # Soil temp depths changed in 1999, from 2" and 4" to 4" and 20",
-  # respectively.
-  data_pre_2002 <- data_pre_2002 |>
-    mutate(
-      obs_hrly_temp_soil_10cm = dplyr::if_else(
-        obs_year < 1999,
-        temp_soil_deep,
-        temp_soil_shallow
+  if (any(stn_yrs <= 2002)) {
+    data_pre_2002 <- read_delim(
+      urls_pre_2002,
+      delim = ",",
+      escape_backslash = TRUE,
+      col_names = col_names_pre,
+      col_types = cols(
+        obs_year = col_character(),
+        obs_doy = col_character()
       ),
-      obs_hrly_temp_soil_50cm = dplyr::if_else(
-        obs_year < 1999,
-        NA,
-        temp_soil_deep
-      )
+      trim_ws = TRUE
     ) |>
-    select(-starts_with("temp_soil_"))
+      # Sometimes there is an odd end of line character that contaminates the year column
+      mutate(across(c(obs_year, obs_doy), \(x) {
+        str_remove(x, "\\u001a") |> parse_integer()
+      }))
+    # Years prior to 2000 are to be two-digit values instead of four-digit
+    # values. Overwrite the first column for all years with four-digit values.
+    data_pre_2002 <- data_pre_2002 |>
+      mutate(obs_year = ifelse(obs_year < 2000, obs_year + 1900L, obs_year))
+
+    # Soil temp depths changed in 1999, from 2" and 4" to 4" and 20",
+    # respectively.
+    data_pre_2002 <- data_pre_2002 |>
+      mutate(
+        obs_hrly_temp_soil_10cm = dplyr::if_else(
+          obs_year < 1999,
+          temp_soil_deep,
+          temp_soil_shallow
+        ),
+        obs_hrly_temp_soil_50cm = dplyr::if_else(
+          obs_year < 1999,
+          NA,
+          temp_soil_deep
+        )
+      ) |>
+      select(-starts_with("temp_soil_"))
+  } else {
+    data_pre_2002 <- tibble::tibble()
+  }
 
   data_post_2002 <- read_csv(
     urls_post_2002,
