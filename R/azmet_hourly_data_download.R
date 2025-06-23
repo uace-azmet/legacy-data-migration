@@ -232,7 +232,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
     filter(n > 1)
   if (nrow(obs_duplicated != 0)) {
     cli::cli_warn(
-      "{nrow(obs_duplicated)} hour{?s} {?has/have} multiple observations!"
+      "{stn_name}: {nrow(obs_duplicated)} hour{?s} {?has/have} multiple observations!"
     )
   }
 

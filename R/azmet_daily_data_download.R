@@ -265,6 +265,21 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   # Find and remove duplicate row entries
   obs_dyly <- distinct(obs_dyly)
 
+  # Remove rows that are all NAs (we'll add any necessary ones back later)
+  # (https://github.com/uace-azmet/legacy-data-migration/issues/7)
+  obs_dyly <- obs_dyly |>
+    filter(!if_all(obs_dyly_temp_air_max:obs_dyly_derived_dwpt_mean, is.na))
+
+  # Warn if there are more than one row per day
+  obs_duplicated <- obs_dyly |>
+    count(obs_year, obs_doy, ) |>
+    filter(n > 1)
+  if (nrow(obs_duplicated != 0)) {
+    cli::cli_warn(
+      "{stn_name}: {nrow(obs_duplicated)} day{?s} {?has/have} multiple observations!"
+    )
+  }
+
   # ADDRESS MISSING DAILY ENTRIES --------------------
   # This should correctly account for leap years
   obs_dyly <- obs_dyly |>
