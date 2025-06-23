@@ -184,8 +184,10 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
         format = "%Y %j"
       ) +
         lubridate::hours(obs_hour),
-      .before = 1
+      .before = obs_year
     )
+  # Note that AZMET uses 24:00:00 for midnight and R uses 00:00:00 of the next
+  # day.  This will get corrected later.
 
   # Based on previous work with AZMET data, there are several known formatting
   # bugs in the original / downloaded data files. We will address these
@@ -215,13 +217,18 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       )
     )
 
-  # Fill in values for year, and day-of-year for any date entries
-  # that may be missing in the downloaded original data
+  # Fill in values for year, and day-of-year for any date entries that may be
+  # missing in the downloaded original data, and correct for the fact that AZMET
+  # uses 24:00:00 for midnight.
   obs_hrly <- obs_hrly |>
     dplyr::mutate(
-      obs_year = lubridate::year(obs_datetime),
-      obs_doy = lubridate::yday(obs_datetime),
-      obs_hour = lubridate::hour(obs_datetime)
+      obs_year = use_24_year(obs_datetime),
+      obs_doy = use_24_yday(obs_datetime),
+      obs_hour = use_24_hour(obs_datetime)
+    ) |>
+    dplyr::mutate(
+      #converts to character, but that's ok because we're done with it now
+      obs_datetime = use_24_datetime(obs_datetime)
     )
 
   # Populate station ID in the format of "az01"
