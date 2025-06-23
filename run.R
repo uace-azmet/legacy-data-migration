@@ -5,6 +5,9 @@ library(purrr)
 library(stringr)
 library(fs)
 library(glue)
+library(lubridate)
+library(cli)
+
 
 # station_info
 
@@ -40,6 +43,8 @@ purrr::walk(
         glue("obs_dyly_derived-{snakecase::to_snake_case(station)}.csv")
       )
     )
+    # wait a bit before scraping the next station to be friendly to resources
+    Sys.sleep(3)
   },
   .progress = TRUE
 )
@@ -60,6 +65,8 @@ purrr::walk(
         glue("obs_hrly_derived-{snakecase::to_snake_case(station)}.csv")
       )
     )
+    # wait a bit before scraping the next station to be friendly to resources
+    Sys.sleep(3)
   },
   .progress = TRUE
 )
