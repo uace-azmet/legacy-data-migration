@@ -230,7 +230,8 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_datetime = as.Date(
         paste(obs_dyly$obs_year, obs_dyly$obs_doy),
         format = "%Y %j"
-      )
+      ),
+      .before = obs_year
     )
 
   # Based on previous work with AZMET data, there are several known formatting
@@ -254,8 +255,8 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   obs_dyly <- obs_dyly |>
     tidyr::complete(
       obs_datetime = seq(
-        lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "year"),
-        lubridate::ceiling_date(max(obs_datetime, na.rm = TRUE), unit = "year"),
+        min(obs_datetime, na.rm = TRUE),
+        max(obs_datetime, na.rm = TRUE),
         "day"
       )
     )
