@@ -154,6 +154,7 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
         obs_year = col_character(),
         obs_doy = col_character()
       ),
+      id = "url",
       trim_ws = TRUE
     ) |>
       # Sometimes there is an odd end of line character that contaminates the year column
@@ -212,6 +213,7 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_year = col_character(),
       obs_doy = col_character()
     ),
+    id = "url",
     trim_ws = TRUE
   ) |>
     # Sometimes there is an odd end of line character that contaminates the year column
@@ -223,6 +225,19 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   obs_dyly <- bind_rows(data_pre_2002, data_post_2002)
 
   # FORMAT DATA --------------------
+  # The year from the URL is more reliable than the one in the data, which
+  # ocasionally is a different year
+  # (https://github.com/uace-azmet/legacy-data-migration/issues/7)
+  obs_dyly <- obs_dyly |>
+    mutate(obs_year = as.integer(str_extract(url, "\\d{2}(?=rd.txt$)"))) |>
+    mutate(
+      obs_year = if_else(
+        between(obs_year, 87, 99),
+        obs_year + 1900L,
+        obs_year + 2000L
+      )
+    ) |>
+    select(-url)
 
   # Populate new 'date', columns
   obs_dyly <- obs_dyly |>

@@ -127,6 +127,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
         obs_year = col_character(),
         obs_doy = col_character()
       ),
+      id = "url", #save the url
       trim_ws = TRUE
     ) |>
       # Sometimes there is an odd end of line character that contaminates the year column
@@ -165,6 +166,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_year = col_character(),
       obs_doy = col_character()
     ),
+    id = "url",
     trim_ws = TRUE
   ) |>
     mutate(across(c(obs_year, obs_doy), \(x) {
@@ -176,7 +178,21 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
 
   # FORMAT DATA --------------------
 
-  # Populate new `obs_datetime` column
+  # The year from the URL is more reliable than the one in the data, which
+  # ocasionally is a different year
+  # (https://github.com/uace-azmet/legacy-data-migration/issues/7)
+  obs_hrly <- obs_hrly |>
+    mutate(obs_year = as.integer(str_extract(url, "\\d{2}(?=rh.txt$)"))) |>
+    mutate(
+      obs_year = if_else(
+        between(obs_year, 87, 99),
+        obs_year + 1900L,
+        obs_year + 2000L
+      )
+    ) |>
+    select(-url)
+
+  # Populate new`obs_datetime` column
   obs_hrly <- obs_hrly |>
     mutate(
       obs_datetime = as.Date(
@@ -186,8 +202,8 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
         lubridate::hours(obs_hour),
       .before = obs_year
     )
-  # Note that AZMET uses 24:00:00 for midnight and R uses 00:00:00 of the next
-  # day.  This will get corrected later.
+  # Note that AZMET uses 24:00:00 for midnight and R automatically converts that
+  # to 00:00:00 of the next day.  This will get corrected later.
 
   # Based on previous work with AZMET data, there are several known formatting
   # bugs in the original / downloaded data files. We will address these
@@ -205,14 +221,29 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # Find and remove duplicate row entries
   obs_hrly <- distinct(obs_hrly)
 
+  # Remove rows that are all NAs (we'll add any necessary ones back later)
+  # (https://github.com/uace-azmet/legacy-data-migration/issues/7)
+  obs_hrly <- obs_hrly |>
+    filter(!if_all(obs_hrly_temp_air:obs_hrly_derived_dwpt, is.na))
+
+  # Warn if there are more than one row per hour
+  obs_duplicated <- obs_hrly |>
+    count(obs_year, obs_doy, obs_hour) |>
+    filter(n > 1)
+  if (nrow(obs_duplicated != 0)) {
+    cli::cli_warn(
+      "{nrow(obs_duplicated)} hour{?s} {?has/have} multiple observations!"
+    )
+  }
+
   # ADDRESS MISSING HOURLY ENTRIES --------------------
 
   # This should correctly account for leap years
   obs_hrly <- obs_hrly |>
     tidyr::complete(
       obs_datetime = seq(
-        lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "year"),
-        lubridate::ceiling_date(max(obs_datetime, na.rm = TRUE), unit = "year"),
+        lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "day"),
+        lubridate::ceiling_date(max(obs_datetime, na.rm = TRUE), unit = "day"),
         "hour"
       )
     )
