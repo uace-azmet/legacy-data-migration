@@ -1,0 +1,4 @@
+- source: naesf.qmd
+  connect:
+    - id: 719dd341-2333-4e98-9ea8-d1db4506d62e
+      url: https://viz.datascience.arizona.edu:443/content/719dd341-2333-4e98-9ea8-d1db4506d62e/

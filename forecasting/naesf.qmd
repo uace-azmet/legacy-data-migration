@@ -1,0 +1,381 @@
+---
+title: NAESF data fetching
+author: Eric R. Scott
+date: today
+execute: 
+  echo: true
+code-fold: show
+toc: true
+format: 
+  html:
+    df-print: paged
+---
+
+Here I explore some options for getting forecast data from the NAEFS model for AZMET stations (or areas around stations).
+
+The data are available in multiple places including an S3 bucket.  We *could* open the full files on the S3 bucket without downloading them, and do subsetting with `terra`.  Another option though is to programatically create a request that does the filtering and downloads a subset of the data similar to this [filtering tool](https://nomads.ncep.noaa.gov/gribfilter.php?ds=naefsbc).  For now I've gone with that second method.
+
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+library(glue)
+library(fs)
+library(sf)
+sf_use_s2(use_s2 = TRUE)
+library(httr2)
+library(azmetr) #for station_info
+library(terra)
+library(exactextractr) #currently has CRAN NOTE
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(stringr)
+library(janitor)
+library(withr)
+```
+
+## Prepare Station Data
+
+We'll turn `station_info` into an `sf` object that we'll use in a few ways later on.
+
+```{r}
+station_sf <- station_info |>
+  st_as_sf(coords = c("longitude", "latitude")) |>
+  st_set_crs(4326)
+```
+
+Then I'll create a buffer around each station.  This both ensures we have a few pixels around the stations when we create a bounding box *and* would be useful if you are interested in "zonal" statistics rather than just point data.
+
+
+```{r}
+station_buffer_sf <- station_sf |>
+  st_buffer(dist = 5000) # 5km radius buffer around lat lon
+
+station_bbox <- station_buffer_sf |>
+  dplyr::pull(geometry) |>
+  st_bbox()
+```
+
+This is what the points, buffers, and bounding box look like
+
+```{r}
+library(USAboundaries)
+library(ggplot2)
+
+az <- us_states(states = "Arizona")
+
+ggplot() +
+  geom_sf(data = az) +
+  geom_sf(data = station_sf) +
+  geom_sf(data = station_buffer_sf, color = "red", fill = NA) +
+  annotate(
+    geom = "rect",
+    fill = NA,
+    color = "blue",
+    xmin = station_bbox["xmin"],
+    xmax = station_bbox["xmax"],
+    ymin = station_bbox["ymin"],
+    ymax = station_bbox["ymax"]
+  )
+```
+
+## NAEFS data structure
+
+I think the best product is the NAEFS high resolutionbias-corrected.  The full inventory is [here](https://www.nco.ncep.noaa.gov/pmb/products/naefs/).
+
+There are a number of parameters that could either be hard-coded or end up as arguments in a function.
+
+Forecasts are produced twice a day at hours 00 or 12
+
+```{r}
+cycles <- c("00", "12")
+```
+
+There are a number of summary statistics from the ensemble models available including average, "spread" (not entirely sure what this is, but maybe standard deviation), mode, 10th percentile, 50th percentile (median), and 90th percentile.
+
+
+```{r}
+stats <- c("avg", "spr", "mode", "10pt", "50pt", "90pt")
+```
+
+Forecasts are available 3 hourly out to 192 hours, then 6 hourly out to 384 hours
+
+```{r}
+hours <- c(seq(3, 192, by = 3), seq(192, 384, by = 6)) |>
+  unique() |>
+  formatC(width = 3, flag = 0) #formats with leading 0s like "003"
+hours
+```
+
+## Example with a single file
+
+Let's say we just want to get the median forecast for 3 hours out from the hour 00 run today.
+
+```{r}
+hour <- "003"
+cycle <- "00"
+stat <- "50pt"
+day <- Sys.Date()
+```
+
+We need to construct a few elements of the query
+
+```{r}
+dir <-
+  path(
+    glue('/naefs.{strftime(day, "%Y%m%d")}'),
+    cycle,
+    "pgrb2ap5_bc" #NAEFS bias-corrected
+  )
+filename <- glue('naefs_ge{stat}.t{cycle}z.pgrb2a.0p50_bcf{hour}')
+```
+
+Here's the request
+
+```{r}
+req_base <- request("https://nomads.ncep.noaa.gov/cgi-bin/filter_naefsbc.pl") |>
+  # req_user_agent("AZMET (jlweiss@arizona.edu)") |> #eventually uncomment
+  req_retry()
+
+req <- req_base |>
+  req_url_query(
+    dir = dir,
+    file = filename,
+    #Which variables?
+    var_RH = "on",
+    var_TMP = "on",
+    #Which elevations?
+    lev_2_m_above_ground = "on",
+    #Subregion
+    subregion = "", #just how the url is constructed
+    toplat = station_bbox["ymax"],
+    leftlon = station_bbox["xmin"],
+    rightlon = station_bbox["xmax"],
+    bottomlat = station_bbox["ymin"]
+  )
+req
+```
+
+Download to a temp file
+
+```{r}
+tmp <- tempfile()
+resp <- req_perform(req, path = tmp)
+```
+
+We can now view the response by opening it with `terra`
+
+```{r}
+r <- rast(tmp)
+plot(r)
+```
+
+## Extracting data
+
+There are three options for extracting data for each station:
+
+1. Just get the value of the pixel the station happens to land in.
+2. Estimate the value a the point with bilinear interpolation from the nearest 4 pixels (see "method" in `?terra::extract()`).
+3. Get an average (mean or median) value for a buffer around each point, weighted by the area of each pixel included in the buffer with `exactextractr`.
+
+Just the pixels the points land in:
+
+```{r}
+fc_points <- terra::extract(
+  terra::rast(tmp),
+  station_sf,
+  method = "simple", #just the value of pixel this point is in
+  ID = FALSE
+) |>
+  as_tibble() |>
+  #clean up column names
+  rename_with(\(x) {
+    str_remove(x, "2\\[m\\] HTGL=Specified height level above ground; ")
+  }) |>
+  clean_names()
+
+#join back to station info
+fc_points <- bind_cols(
+  station_info |> select(meta_station_id),
+  fc_points
+)
+fc_points
+```
+
+With binlinear interpolation
+
+
+```{r}
+fc_bilinear <- terra::extract(
+  terra::rast(tmp),
+  station_sf,
+  method = "bilinear",
+  ID = FALSE
+) |>
+  as_tibble() |>
+  #clean up column names
+  rename_with(\(x) {
+    str_remove(x, "2\\[m\\] HTGL=Specified height level above ground; ")
+  }) |>
+  clean_names()
+
+#join back to station info
+fc_bilinear <- bind_cols(
+  station_info |> select(meta_station_id),
+  fc_bilinear
+)
+fc_bilinear
+```
+
+
+Means of the 5km radius buffer around each station:
+
+```{r}
+fc_means <- exact_extract(
+  terra::rast(tmp),
+  station_buffer_sf,
+  fun = "mean",
+  append_cols = TRUE,
+  progress = FALSE
+) |>
+  as_tibble() |>
+  #clean up column names
+  rename_with(\(x) {
+    str_remove(x, "2\\[m\\] HTGL=Specified height level above ground; ")
+  }) |>
+  clean_names() |>
+  select(meta_station_id, mean_temperature_c, mean_relative_humidity_percent)
+fc_means
+```
+
+## Scaling up
+
+To scale up, we need to generate multiple requests to get files for each statistic (e.g. 10pt, 50pt and 90pt) and each forecast hour of interest.  We'll also need to extract additional information from the resulting rasters to get the datetime value for each forecast.
+
+I'll start by creating a grid of values
+
+```{r}
+grid <- tidyr::expand_grid(
+  cycle = "00", #assume we get the forecast just once a day
+  stat = c("10pt", "50pt", "90pt"), #median, 10th and 90th percentile
+  hour = hours[1:40] #5 days
+) |>
+  mutate(
+    dir = path(
+      glue('/naefs.{strftime(Sys.Date(), "%Y%m%d")}'),
+      cycle,
+      "pgrb2ap5_bc"
+    ),
+    filename = glue('naefs_ge{stat}.t{cycle}z.pgrb2a.0p50_bcf{hour}')
+  )
+grid
+```
+
+Then we'll build a list of requests
+
+
+```{r}
+reqs <- map2(grid$dir, grid$filename, \(dir, filename) {
+  req_base |>
+    req_url_query(
+      dir = dir,
+      file = filename,
+      var_RH = "on",
+      var_TMP = "on",
+      lev_2_m_above_ground = "on",
+      subregion = "",
+      toplat = station_bbox["ymax"],
+      leftlon = station_bbox["xmin"],
+      rightlon = station_bbox["xmax"],
+      bottomlat = station_bbox["ymin"]
+    )
+})
+```
+
+Then perform the requests to download all the files to a tempdir
+
+
+```{r}
+paths <- path_temp(grid$filename)
+resps <- req_perform_parallel(reqs, paths = paths)
+#TODO probably want to double-check that all the responses are good and all the files got downloaded
+```
+
+Read in all the rasters, combine additional info into the layer names
+
+
+```{r}
+all <- rast(paths)
+head(names(all))
+head(time(all))
+head(sources(all))
+```
+
+```{r}
+lyrnames <- names(all) |>
+  # Remove elevation information
+  str_remove("2\\[m\\] HTGL=Specified height level above ground; ") |>
+  # Add the statistic, keepign in mind there are two layers per source (one for each variable we requested)
+  str_c(
+    rep(str_extract(sources(all), "(?<=naefs_ge)10pt|50pt|90pt"), each = 2),
+    sep = "."
+  ) |>
+  # Add the timestamp for the layer with "_" as a separator so I can split here
+  # when I pivot later
+  # TODO: double-check timzone stuff!
+  str_c(format(time(all), tz = "UTC", usetz = TRUE), sep = "_")
+
+# overwrite layer names
+names(all) <- lyrnames
+
+head(names(all))
+```
+
+Now extract, using whatever method, and wrangle the results. 
+
+```{r}
+fc_data <- terra::extract(
+  all,
+  station_sf,
+  method = "bilinear",
+  ID = FALSE
+) |>
+  as_tibble() |>
+  bind_cols(station_info) |>
+  pivot_longer(
+    starts_with(c("Temperature", "Relative humidity")),
+    names_sep = "_",
+    names_to = c("var", "datetime"),
+    names_transform = list(datetime = as.POSIXct)
+  ) |>
+  pivot_wider(
+    names_from = var,
+    values_from = value
+  ) |>
+  janitor::clean_names()
+
+fc_data
+```
+
+## Visualize
+
+Here's an example visualization from a few stations where the ribbons represent the 10th and 90th percentiles and the line is the median from the ensembles.
+
+
+```{r}
+fc_data |>
+  filter(meta_station_id %in% c("az01", "az02", "az04")) |>
+  ggplot(aes(x = datetime, color = meta_station_id, fill = meta_station_id)) +
+  geom_line(aes(y = relative_humidity_percent_50pt)) +
+  geom_ribbon(
+    aes(
+      ymin = relative_humidity_percent_10pt,
+      ymax = relative_humidity_percent_90pt
+    ),
+    alpha = 0.3,
+    color = NA
+  ) +
+  labs(y = "Relative Humidity [%]")
+```
