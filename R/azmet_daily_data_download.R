@@ -202,7 +202,7 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
         )
       ) |>
       select(-starts_with("temp_soil_"))
-  } else {
+  } else { #if there's no pre-2002 data
     data_pre_2002 <- tibble::tibble()
   }
 
