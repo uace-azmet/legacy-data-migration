@@ -300,8 +300,10 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
     )
 
   # Populate station ID in the format of "az01"
+  # TODO: ask Matt Harmon about these variables
   station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
   station_id <- paste0("az", station_number)
+  
   obs_dyly <- obs_dyly |>
     dplyr::mutate(
       station_number = station_number,
@@ -322,13 +324,13 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
       obs_dyly_bat_volt_mean = NA_real_,
       obs_dyly_actual_vp_max = NA_real_,
       obs_dyly_actual_vp_min = NA_real_,
-      obs_dyly_actual_vp_mean = NA_real_,
       obs_dyly_wind_2min_spd_mean = NA_real_,
       obs_dyly_wind_2min_spd_max = NA_real_,
       obs_dyly_wind_2min_timestamp = NA_real_,
       obs_dyly_wind_2min_vector_dir = NA_real_
     ) |>
     # basic range checks
+    # TODO: Should these NOT be the 2min ones?
     dplyr::mutate(
       obs_dyly_wind_2min_spd_max = dplyr::if_else(
         !between(obs_dyly_wind_2min_spd_max, 0, 60),
