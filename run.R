@@ -19,7 +19,7 @@ source("R/azmet_hourly_data_download.R")
 legacy_daily <- azmet_daily_data_download(station_list, "Tucson")
 legacy_daily
 
-legacy_hourly <- azmet_hourly_data_download(station_list, "Mohave #2")
+legacy_hourly <- azmet_hourly_data_download(station_list, "Tucson")
 legacy_hourly
 
 # Run for all sites and save data out to CSV
