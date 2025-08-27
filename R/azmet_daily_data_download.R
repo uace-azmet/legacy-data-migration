@@ -202,7 +202,8 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
         )
       ) |>
       select(-starts_with("temp_soil_"))
-  } else { #if there's no pre-2002 data
+  } else {
+    #if there's no pre-2002 data
     data_pre_2002 <- tibble::tibble()
   }
 
@@ -295,15 +296,15 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   # that may be missing in the downloaded original data
   obs_dyly <- obs_dyly |>
     dplyr::mutate(
-      obs_year = lubridate::year(obs_datetime),
-      obs_doy = lubridate::yday(obs_datetime)
+      obs_year = strftime(obs_datetime, "%Y", tz = tz(obs_datetime)),
+      obs_doy = strftime(obs_datetime, "%j", tz = tz(obs_datetime))
     )
 
   # Populate station ID in the format of "az01"
   # TODO: ask Matt Harmon about these variables
   station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
   station_id <- paste0("az", station_number)
-  
+
   obs_dyly <- obs_dyly |>
     dplyr::mutate(
       station_number = station_number,
@@ -313,12 +314,12 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   # Populate defaults for some missing/empty columns
   obs_dyly <- obs_dyly |>
     dplyr::mutate(
-      obs_hour = 0,
+      obs_hour = "0000",
       obs_seconds = 0,
       obs_version = 1,
       obs_creation_reason = "legacy data transcription",
       obs_needs_review = 0,
-      obs_prg_code = 0428, #"program code"—used to be size of program running on data logger, now just a 4 digit code.
+      obs_prg_code = "0428", #"program code"—used to be size of program running on data logger, now just a 4 digit code.
       obs_dyly_bat_volt_max = NA_real_,
       obs_dyly_bat_volt_min = NA_real_,
       obs_dyly_bat_volt_mean = NA_real_,
