@@ -24,11 +24,11 @@ mps_to_mph <- function(x) {
 use_24_datetime <- function(x) {
   if_else(
     strftime(x, "%T", tz = tz(x)) == "00:00:00",
-    glue::glue("{strftime(x - days(1), tz = tz(x), format = '%F')} 24:00:00"),
+    glue::glue("{strftime(x - days(1), tz = tz(x), format = '%F')} 23:59:59"),
     glue::glue("{strftime(x, tz = tz(x), format = '%F %T')}")
   )
 }
-# use_24_datetime(midnight) == "2024-12-31 24:00:00"
+# use_24_datetime(midnight) == "2024-12-31 23:59:59"
 # use_24_datetime(ymd_hms("2024-04-28 01:00:00")) == "2024-04-28 01:00:00"
 
 use_24_yday <- function(x) {
