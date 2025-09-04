@@ -7,6 +7,7 @@ library(fs)
 library(glue)
 library(lubridate)
 library(cli)
+library(snakecase)
 
 
 # station_info
@@ -105,5 +106,26 @@ out
 # the derived data with the updated one
 fs::file_delete(out)
 
-# TODO: create a dataframe of the four input files for each station and pwalk()
-# updateDerived() over it.
+# reconstruct file names to provide inputs to pwalk() over
+files_df <- tibble(
+  path_obs_hrly = path(
+    out_dir,
+    glue::glue("obs_hrly-{snakecase::to_snake_case(station_names)}.csv")
+  ),
+  path_derived_hrly = path(
+    out_dir,
+    glue::glue("obs_hrly_derived-{snakecase::to_snake_case(station_names)}.csv")
+  ),
+  path_obs_dyly = path(
+    out_dir,
+    glue::glue("obs_dyly-{snakecase::to_snake_case(station_names)}.csv")
+  ),
+  path_derived_dyly = path(
+    out_dir,
+    glue::glue("obs_dyly_derived-{snakecase::to_snake_case(station_names)}.csv")
+  ),
+)
+
+files_updated <- pmap(files_df, updateDerived)
+
+# TODO: delete original derived data and replace with updated version?
