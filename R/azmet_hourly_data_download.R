@@ -251,7 +251,8 @@ azmet_hourly_data_download <- function(stn_list, stn_name, years = NULL) {
   obs_hrly <- obs_hrly |>
     tidyr::complete(
       obs_datetime = seq(
-        lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "day"),
+        lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "day") +
+          hours(1), # days always start at 01:00:00 because of how midnight is handled with AZMET
         lubridate::ceiling_date(max(obs_datetime, na.rm = TRUE), unit = "day"),
         "hour"
       )
