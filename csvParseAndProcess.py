@@ -5,6 +5,7 @@ import csv
 import decimal
 from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_DOWN
 import math
+import re
 
 
 def convertCelsiusToFahrenheit(strDegCelsius=""):
@@ -332,278 +333,301 @@ def calculateHeatUnits(
     return dictReturn
 
 
-data = []
-dataHourly = {}
-dataDaily = {}
-dataHourlyOutput = []
-dataDailyDerived = {}
-dataHourlyDerived = {}
-datDailyDerivedOutput = []
-with open("tucson_2020_obs_hrly.csv", "r", newline="") as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        strDailyOutputKey = row["obs_year"] + "." + row["obs_doy"]
+def updateDerived(path_obs_hrly, path_derived_hrly, path_obs_dyly, path_derived_dyly):
+    data = []
+    dataHourly = {}
+    dataDaily = {}
+    dataHourlyOutput = []
+    dataDailyDerived = {}
+    dataHourlyDerived = {}
+    datDailyDerivedOutput = []
+    with open(path_obs_hrly, "r", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            strDailyOutputKey = row["obs_year"] + "." + row["obs_doy"]
 
-        if strDailyOutputKey not in dataDailyDerived:
-            dataDailyDerived[strDailyOutputKey] = {
-                "obs_dyly_derived_chill_hours_0C": 0,
-                "obs_dyly_derived_chill_hours_7C": 0,
-                "obs_dyly_derived_chill_hours_20C": 0,
-                "intHoursHeatStressCotton": 0,
-                "fltAccumHeatStressC": 0.00,
-                "fltAccumHeatStressF": 0.00,
-                "obs_dyly_derived_heatstress_cotton_meanC": 0.00,
-                "obs_dyly_derived_heatstress_cotton_meanF": 0.00,
+            if strDailyOutputKey not in dataDailyDerived:
+                dataDailyDerived[strDailyOutputKey] = {
+                    "obs_dyly_derived_chill_hours_0C": 0,
+                    "obs_dyly_derived_chill_hours_7C": 0,
+                    "obs_dyly_derived_chill_hours_20C": 0,
+                    "intHoursHeatStressCotton": 0,
+                    "fltAccumHeatStressC": 0.00,
+                    "fltAccumHeatStressF": 0.00,
+                    "obs_dyly_derived_heatstress_cotton_meanC": 0.00,
+                    "obs_dyly_derived_heatstress_cotton_meanF": 0.00,
+                }
+
+            dictHeatStress = calculateHeatStressCotton(
+                row["obs_hrly_temp_air"],
+                row["obs_hrly_relative_humidity"],
+                row["obs_hrly_vpd"],
+                row["obs_hrly_sol_rad_total"],
+            )
+
+            dataHourlyDerived[
+                row["obs_year"] + "." + row["obs_doy"] + "." + row["obs_hour"]
+            ] = {
+                "obs_hrly_derived_heatstress_cottonC": dictHeatStress[
+                    "heatStressCottonC"
+                ],
+                "obs_hrly_derived_heatstress_cottonF": dictHeatStress[
+                    "heatStressCottonF"
+                ],
             }
 
-        dictHeatStress = calculateHeatStressCotton(
-            row["obs_hrly_temp_air"],
-            row["obs_hrly_relative_humidity"],
-            row["obs_hrly_vpd"],
-            row["obs_hrly_sol_rad_total"],
-        )
+            dataDailyDerived[strDailyOutputKey]["intHoursHeatStressCotton"] = (
+                dataDailyDerived[strDailyOutputKey]["intHoursHeatStressCotton"] + 1
+            )
+            dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressC"] = (
+                decimal.Decimal(
+                    dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressC"]
+                )
+                + decimal.Decimal(dictHeatStress["heatStressCottonC"])
+            )
+            dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressF"] = (
+                decimal.Decimal(
+                    dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressF"]
+                )
+                + decimal.Decimal(dictHeatStress["heatStressCottonF"])
+            )
 
-        dataHourlyDerived[
-            row["obs_year"] + "." + row["obs_doy"] + "." + row["obs_hour"]
-        ] = {
-            "obs_hrly_derived_heatstress_cottonC": dictHeatStress["heatStressCottonC"],
-            "obs_hrly_derived_heatstress_cottonF": dictHeatStress["heatStressCottonF"],
-        }
-
-        dataDailyDerived[strDailyOutputKey]["intHoursHeatStressCotton"] = (
-            dataDailyDerived[strDailyOutputKey]["intHoursHeatStressCotton"] + 1
-        )
-        dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressC"] = decimal.Decimal(
-            dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressC"]
-        ) + decimal.Decimal(dictHeatStress["heatStressCottonC"])
-        dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressF"] = decimal.Decimal(
-            dataDailyDerived[strDailyOutputKey]["fltAccumHeatStressF"]
-        ) + decimal.Decimal(dictHeatStress["heatStressCottonF"])
-
-        if (
-            (row["obs_hrly_temp_air"] != "-7999")
-            and (row["obs_hrly_temp_air"] != "-6999")
-            and (row["obs_hrly_temp_air"] != "-9999.0")
-        ):
-            if float(row["obs_hrly_temp_air"]) < 0.00000:
-                dataDailyDerived[strDailyOutputKey][
-                    "obs_dyly_derived_chill_hours_0C"
-                ] = (
+            if (
+                (row["obs_hrly_temp_air"] != "-7999")
+                and (row["obs_hrly_temp_air"] != "-6999")
+                and (row["obs_hrly_temp_air"] != "-9999.0")
+            ):
+                if float(row["obs_hrly_temp_air"]) < 0.00000:
                     dataDailyDerived[strDailyOutputKey][
                         "obs_dyly_derived_chill_hours_0C"
-                    ]
-                    + 1
-                )
-            if float(row["obs_hrly_temp_air"]) < 7.22222:
-                dataDailyDerived[strDailyOutputKey][
-                    "obs_dyly_derived_chill_hours_7C"
-                ] = (
+                    ] = (
+                        dataDailyDerived[strDailyOutputKey][
+                            "obs_dyly_derived_chill_hours_0C"
+                        ]
+                        + 1
+                    )
+                if float(row["obs_hrly_temp_air"]) < 7.22222:
                     dataDailyDerived[strDailyOutputKey][
                         "obs_dyly_derived_chill_hours_7C"
-                    ]
-                    + 1
-                )
-            if float(row["obs_hrly_temp_air"]) > 20.00000:
-                dataDailyDerived[strDailyOutputKey][
-                    "obs_dyly_derived_chill_hours_20C"
-                ] = (
+                    ] = (
+                        dataDailyDerived[strDailyOutputKey][
+                            "obs_dyly_derived_chill_hours_7C"
+                        ]
+                        + 1
+                    )
+                if float(row["obs_hrly_temp_air"]) > 20.00000:
                     dataDailyDerived[strDailyOutputKey][
                         "obs_dyly_derived_chill_hours_20C"
-                    ]
-                    + 1
+                    ] = (
+                        dataDailyDerived[strDailyOutputKey][
+                            "obs_dyly_derived_chill_hours_20C"
+                        ]
+                        + 1
+                    )
+
+            if strDailyOutputKey not in dataHourly:
+                dataHourly[strDailyOutputKey] = []
+
+            dataHourly[strDailyOutputKey].append(row)
+
+    csvfile.close()
+
+    dataHourlyOutputFields = []
+
+    with open(path_derived_hrly, "r", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            strAccessKey = (
+                row["obs_year"] + "." + row["obs_doy"] + "." + row["obs_hour"]
+            )
+            dataHourlyOutputFields = list(row.keys())
+            if strAccessKey in dataHourlyDerived:
+                row["obs_hrly_derived_heatstress_cottonC"] = roundValue(
+                    dataHourlyDerived[strAccessKey][
+                        "obs_hrly_derived_heatstress_cottonC"
+                    ],
+                    "000.0",
+                )
+                row["obs_hrly_derived_heatstress_cottonF"] = roundValue(
+                    dataHourlyDerived[strAccessKey][
+                        "obs_hrly_derived_heatstress_cottonF"
+                    ],
+                    "000.0",
                 )
 
-        if strDailyOutputKey not in dataHourly:
-            dataHourly[strDailyOutputKey] = []
+            dataHourlyOutput.append(row)
+    csvfile.close()
 
-        dataHourly[strDailyOutputKey].append(row)
+    out_hrly = re.sub(r"(.+)(\.\w+$)", r"\1_updated\2", path_derived_hrly)
+    with open(out_hrly, "w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=dataHourlyOutputFields)
+        writer.writeheader()
+        writer.writerows(dataHourlyOutput)
 
-csvfile.close()
+    csvfile.close()
 
-dataHourlyOutputFields = []
+    with open(path_obs_dyly, "r", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            strOutputKey = row["obs_year"] + "." + row["obs_doy"]
 
-with open("tucson_2020_obs_hrly_derived.csv", "r", newline="") as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        strAccessKey = row["obs_year"] + "." + row["obs_doy"] + "." + row["obs_hour"]
-        dataHourlyOutputFields = list(row.keys())
-        if strAccessKey in dataHourlyDerived:
-            row["obs_hrly_derived_heatstress_cottonC"] = roundValue(
-                dataHourlyDerived[strAccessKey]["obs_hrly_derived_heatstress_cottonC"],
-                "000.0",
+            dictHeatStress = calculateHeatStressCotton(
+                row["obs_dyly_temp_air_mean"],
+                row["obs_dyly_relative_humidity_mean"],
+                row["obs_dyly_vpd_mean"],
+                row["obs_dyly_sol_rad_total"],
             )
-            row["obs_hrly_derived_heatstress_cottonF"] = roundValue(
-                dataHourlyDerived[strAccessKey]["obs_hrly_derived_heatstress_cottonF"],
-                "000.0",
+
+            dataDailyDerived[strOutputKey][
+                "obs_dyly_derived_heatstress_cotton_meanC"
+            ] = dictHeatStress["heatStressCottonC"]
+            dataDailyDerived[strOutputKey][
+                "obs_dyly_derived_heatstress_cotton_meanF"
+            ] = dictHeatStress["heatStressCottonF"]
+
+            dictHeatUnits = calculateHeatUnits(
+                row["obs_dyly_temp_air_max"],
+                row["obs_dyly_temp_air_min"],
+                "30.0",
+                "12.7778",
             )
-
-        dataHourlyOutput.append(row)
-csvfile.close()
-
-with open("tucson_2020_obs_hrly_derived_updated.csv", "w", newline="") as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames=dataHourlyOutputFields)
-    writer.writeheader()
-    writer.writerows(dataHourlyOutput)
-
-csvfile.close()
-
-with open("tucson_2020_obs_dyly.csv", "r", newline="") as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        strOutputKey = row["obs_year"] + "." + row["obs_doy"]
-
-        dictHeatStress = calculateHeatStressCotton(
-            row["obs_dyly_temp_air_mean"],
-            row["obs_dyly_relative_humidity_mean"],
-            row["obs_dyly_vpd_mean"],
-            row["obs_dyly_sol_rad_total"],
-        )
-
-        dataDailyDerived[strOutputKey]["obs_dyly_derived_heatstress_cotton_meanC"] = (
-            dictHeatStress["heatStressCottonC"]
-        )
-        dataDailyDerived[strOutputKey]["obs_dyly_derived_heatstress_cotton_meanF"] = (
-            dictHeatStress["heatStressCottonF"]
-        )
-
-        dictHeatUnits = calculateHeatUnits(
-            row["obs_dyly_temp_air_max"],
-            row["obs_dyly_temp_air_min"],
-            "30.0",
-            "12.7778",
-        )
-        dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_13C"] = roundValue(
-            dictHeatUnits["fltHeatUnits"], "000.0"
-        )
-        #
-        dictHeatUnits = calculateHeatUnits(
-            row["obs_dyly_temp_air_max"], row["obs_dyly_temp_air_min"], "30.0", "10.0"
-        )
-        dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_10C"] = roundValue(
-            dictHeatUnits["fltHeatUnits"], "000.0"
-        )
-        #
-        dictHeatUnits = calculateHeatUnits(
-            row["obs_dyly_temp_air_max"],
-            row["obs_dyly_temp_air_min"],
-            "30.0",
-            "7.22222",
-        )
-        dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_7C"] = roundValue(
-            dictHeatUnits["fltHeatUnits"], "000.0"
-        )
-        #
-        dictHeatUnits = calculateHeatUnits(
-            row["obs_dyly_temp_air_max"],
-            row["obs_dyly_temp_air_min"],
-            "34.4444",
-            "12.7778",
-        )
-        dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_3413C"] = (
-            roundValue(dictHeatUnits["fltHeatUnits"], "000.0")
-        )
-
-csvfile.close()
-
-with open("tucson_2020_obs_dyly_derived.csv", "r", newline="") as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        strAccessKey = row["obs_year"] + "." + row["obs_doy"]
-        dataDailyDerivedOutputFields = list(row.keys())
-        if strAccessKey in dataDailyDerived:
-            row["obs_dyly_derived_heatstress_cotton_meanC"] = roundValue(
-                (
-                    dataDailyDerived[strAccessKey]["fltAccumHeatStressC"]
-                    / dataDailyDerived[strAccessKey]["intHoursHeatStressCotton"]
-                ),
-                "000.0",
-            )
-            row["obs_dyly_derived_heatstress_cotton_meanF"] = roundValue(
-                (
-                    dataDailyDerived[strAccessKey]["fltAccumHeatStressF"]
-                    / dataDailyDerived[strAccessKey]["intHoursHeatStressCotton"]
-                ),
-                "000.0",
+            dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_13C"] = (
+                roundValue(dictHeatUnits["fltHeatUnits"], "000.0")
             )
             #
-            row["obs_dyly_derived_chill_hours_0C"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_chill_hours_0C"
-            ]
-            row["obs_dyly_derived_chill_hours_7C"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_chill_hours_7C"
-            ]
-            row["obs_dyly_derived_chill_hours_20C"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_chill_hours_20C"
-            ]
+            dictHeatUnits = calculateHeatUnits(
+                row["obs_dyly_temp_air_max"],
+                row["obs_dyly_temp_air_min"],
+                "30.0",
+                "10.0",
+            )
+            dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_10C"] = (
+                roundValue(dictHeatUnits["fltHeatUnits"], "000.0")
+            )
             #
-            row["obs_dyly_derived_chill_hours_32F"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_chill_hours_0C"
-            ]
-            row["obs_dyly_derived_chill_hours_45F"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_chill_hours_7C"
-            ]
-            row["obs_dyly_derived_chill_hours_68F"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_chill_hours_20C"
-            ]
-
-            row["obs_dyly_derived_heat_units_7C"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_heat_units_7C"
-            ]
-            row["obs_dyly_derived_heat_units_10C"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_heat_units_10C"
-            ]
-            row["obs_dyly_derived_heat_units_13C"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_heat_units_13C"
-            ]
-            row["obs_dyly_derived_heat_units_3413C"] = dataDailyDerived[strAccessKey][
-                "obs_dyly_derived_heat_units_3413C"
-            ]
-
-            row["obs_dyly_derived_heat_units_45F"] = roundValue(
-                (
-                    convertHeatUnitCelsiusToHeatUnitFahrenheit(
-                        dataDailyDerived[strAccessKey]["obs_dyly_derived_heat_units_7C"]
-                    )
-                ),
-                "000.0",
+            dictHeatUnits = calculateHeatUnits(
+                row["obs_dyly_temp_air_max"],
+                row["obs_dyly_temp_air_min"],
+                "30.0",
+                "7.22222",
             )
-            row["obs_dyly_derived_heat_units_50F"] = roundValue(
-                (
-                    convertHeatUnitCelsiusToHeatUnitFahrenheit(
-                        dataDailyDerived[strAccessKey][
-                            "obs_dyly_derived_heat_units_10C"
-                        ]
-                    )
-                ),
-                "000.0",
+            dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_7C"] = (
+                roundValue(dictHeatUnits["fltHeatUnits"], "000.0")
             )
-            row["obs_dyly_derived_heat_units_55F"] = roundValue(
-                (
-                    convertHeatUnitCelsiusToHeatUnitFahrenheit(
-                        dataDailyDerived[strAccessKey][
-                            "obs_dyly_derived_heat_units_13C"
-                        ]
-                    )
-                ),
-                "000.0",
+            #
+            dictHeatUnits = calculateHeatUnits(
+                row["obs_dyly_temp_air_max"],
+                row["obs_dyly_temp_air_min"],
+                "34.4444",
+                "12.7778",
             )
-            row["obs_dyly_derived_heat_units_9455F"] = roundValue(
-                (
-                    convertHeatUnitCelsiusToHeatUnitFahrenheit(
-                        dataDailyDerived[strAccessKey][
-                            "obs_dyly_derived_heat_units_3413C"
-                        ]
-                    )
-                ),
-                "000.0",
+            dataDailyDerived[strOutputKey]["obs_dyly_derived_heat_units_3413C"] = (
+                roundValue(dictHeatUnits["fltHeatUnits"], "000.0")
             )
 
-        datDailyDerivedOutput.append(row)
-csvfile.close()
+    csvfile.close()
 
-with open("tucson_2020_obs_dyly_derived_updated.csv", "w", newline="") as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames=dataDailyDerivedOutputFields)
-    writer.writeheader()
-    writer.writerows(datDailyDerivedOutput)
+    with open(path_derived_dyly, "r", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            strAccessKey = row["obs_year"] + "." + row["obs_doy"]
+            dataDailyDerivedOutputFields = list(row.keys())
+            if strAccessKey in dataDailyDerived:
+                row["obs_dyly_derived_heatstress_cotton_meanC"] = roundValue(
+                    (
+                        dataDailyDerived[strAccessKey]["fltAccumHeatStressC"]
+                        / dataDailyDerived[strAccessKey]["intHoursHeatStressCotton"]
+                    ),
+                    "000.0",
+                )
+                row["obs_dyly_derived_heatstress_cotton_meanF"] = roundValue(
+                    (
+                        dataDailyDerived[strAccessKey]["fltAccumHeatStressF"]
+                        / dataDailyDerived[strAccessKey]["intHoursHeatStressCotton"]
+                    ),
+                    "000.0",
+                )
+                #
+                row["obs_dyly_derived_chill_hours_0C"] = dataDailyDerived[strAccessKey][
+                    "obs_dyly_derived_chill_hours_0C"
+                ]
+                row["obs_dyly_derived_chill_hours_7C"] = dataDailyDerived[strAccessKey][
+                    "obs_dyly_derived_chill_hours_7C"
+                ]
+                row["obs_dyly_derived_chill_hours_20C"] = dataDailyDerived[
+                    strAccessKey
+                ]["obs_dyly_derived_chill_hours_20C"]
+                #
+                row["obs_dyly_derived_chill_hours_32F"] = dataDailyDerived[
+                    strAccessKey
+                ]["obs_dyly_derived_chill_hours_0C"]
+                row["obs_dyly_derived_chill_hours_45F"] = dataDailyDerived[
+                    strAccessKey
+                ]["obs_dyly_derived_chill_hours_7C"]
+                row["obs_dyly_derived_chill_hours_68F"] = dataDailyDerived[
+                    strAccessKey
+                ]["obs_dyly_derived_chill_hours_20C"]
 
-csvfile.close()
+                row["obs_dyly_derived_heat_units_7C"] = dataDailyDerived[strAccessKey][
+                    "obs_dyly_derived_heat_units_7C"
+                ]
+                row["obs_dyly_derived_heat_units_10C"] = dataDailyDerived[strAccessKey][
+                    "obs_dyly_derived_heat_units_10C"
+                ]
+                row["obs_dyly_derived_heat_units_13C"] = dataDailyDerived[strAccessKey][
+                    "obs_dyly_derived_heat_units_13C"
+                ]
+                row["obs_dyly_derived_heat_units_3413C"] = dataDailyDerived[
+                    strAccessKey
+                ]["obs_dyly_derived_heat_units_3413C"]
+
+                row["obs_dyly_derived_heat_units_45F"] = roundValue(
+                    (
+                        convertHeatUnitCelsiusToHeatUnitFahrenheit(
+                            dataDailyDerived[strAccessKey][
+                                "obs_dyly_derived_heat_units_7C"
+                            ]
+                        )
+                    ),
+                    "000.0",
+                )
+                row["obs_dyly_derived_heat_units_50F"] = roundValue(
+                    (
+                        convertHeatUnitCelsiusToHeatUnitFahrenheit(
+                            dataDailyDerived[strAccessKey][
+                                "obs_dyly_derived_heat_units_10C"
+                            ]
+                        )
+                    ),
+                    "000.0",
+                )
+                row["obs_dyly_derived_heat_units_55F"] = roundValue(
+                    (
+                        convertHeatUnitCelsiusToHeatUnitFahrenheit(
+                            dataDailyDerived[strAccessKey][
+                                "obs_dyly_derived_heat_units_13C"
+                            ]
+                        )
+                    ),
+                    "000.0",
+                )
+                row["obs_dyly_derived_heat_units_9455F"] = roundValue(
+                    (
+                        convertHeatUnitCelsiusToHeatUnitFahrenheit(
+                            dataDailyDerived[strAccessKey][
+                                "obs_dyly_derived_heat_units_3413C"
+                            ]
+                        )
+                    ),
+                    "000.0",
+                )
+
+            datDailyDerivedOutput.append(row)
+    csvfile.close()
+    out_dyly = re.sub(r"(.+)(\.\w+$)", r"\1_updated\2", path_derived_dyly)
+    with open(out_dyly, "w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=dataDailyDerivedOutputFields)
+        writer.writeheader()
+        writer.writerows(datDailyDerivedOutput)
+
+    csvfile.close()
