@@ -20,7 +20,10 @@
 # data into a dataframe, checks for missing or duplicate dates or other
 # oddities, and writes the station data dataframe to the current environment
 
-azmet_daily_data_download <- function(stn_list, stn_name) {
+#' @param stn_list a data frame with columns `stn` (station name), `stn_no`, `start_yr`, and `end_yr`
+#' @param stn_name character; station name
+#' @param years integer; optional vector of min and max years
+azmet_daily_data_download <- function(stn_list, stn_name, years = NULL) {
   # SETUP --------------------
 
   # AZMET data format changes between the periods 1987-2002 and 2003-present, as
@@ -98,6 +101,15 @@ azmet_daily_data_download <- function(stn_list, stn_name) {
   # Extract the row of information (station name, station number, start year,
   # and end year) tied to the selected AZMET station
   stn_info <- subset(x = stn_list, subset = stn == stn_name)
+
+  # optionally filter by years
+  if (!is.null(years)) {
+    stn_info <- stn_info |>
+      mutate(
+        start_yr = pmax(min(years), start_yr),
+        end_yr = pmin(max(years), end_yr)
+      )
+  }
 
   # Set the station number based on the information extracted from 'stn_list' in
   # the previous command. The station number will need to be converted to a
