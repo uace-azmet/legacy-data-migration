@@ -631,3 +631,4 @@ def updateDerived(path_obs_hrly, path_derived_hrly, path_obs_dyly, path_derived_
         writer.writerows(datDailyDerivedOutput)
 
     csvfile.close()
+    return [out_hrly, out_dyly]
