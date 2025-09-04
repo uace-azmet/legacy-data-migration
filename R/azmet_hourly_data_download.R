@@ -275,7 +275,7 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
       obs_version = 1,
       obs_creation_reason = "legacy data transcription",
       obs_needs_review = 0,
-      obs_prg_code = 0428, #"program code"—used to be size of program running on data logger, now just a 4 digit code.
+      obs_prg_code = "0428", #"program code"—used to be size of program running on data logger, now just a 4 digit code.
       obs_hrly_wind_2min_vector_dir = NA_real_,
       obs_hrly_wind_2min_spd_max = NA_real_,
       obs_hrly_wind_2min_spd_mean = NA_real_,
