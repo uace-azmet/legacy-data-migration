@@ -15,7 +15,7 @@
 # data into a dataframe, checks for missing or duplicate dates or other
 # oddities, and writes the station data dataframe to the current environment
 
-azmet_hourly_data_download <- function(stn_list, stn_name) {
+azmet_hourly_data_download <- function(stn_list, stn_name, years = NULL) {
   # SETUP --------------------
 
   # AZMET data format changes between the periods 1987-2002 and 2003-present, as
@@ -75,6 +75,15 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   # Extract the row of information (station name, station number, start year,
   # and end year) tied to the selected AZMET station
   stn_info <- subset(x = stn_list, subset = stn == stn_name)
+
+  # optionally filter by years
+  if (!is.null(years)) {
+    stn_info <- stn_info |>
+      mutate(
+        start_yr = pmax(min(years), start_yr),
+        end_yr = pmin(max(years), end_yr)
+      )
+  }
 
   # Set the station number based on the information extracted from 'stn_list' in
   # the previous command. The station number will need to be converted to a
@@ -242,7 +251,8 @@ azmet_hourly_data_download <- function(stn_list, stn_name) {
   obs_hrly <- obs_hrly |>
     tidyr::complete(
       obs_datetime = seq(
-        lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "day"),
+        lubridate::floor_date(min(obs_datetime, na.rm = TRUE), unit = "day") +
+          hours(1), # days always start at 01:00:00 because of how midnight is handled with AZMET
         lubridate::ceiling_date(max(obs_datetime, na.rm = TRUE), unit = "day"),
         "hour"
       )
