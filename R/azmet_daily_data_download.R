@@ -313,7 +313,6 @@ azmet_daily_data_download <- function(stn_list, stn_name, years = NULL) {
     )
 
   # Populate station ID in the format of "az01"
-  # TODO: ask Matt Harmon about these variables
   station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
   station_id <- paste0("az", station_number)
 

@@ -91,7 +91,9 @@ library(reticulate)
 
 # virtualenv_create("azmet")
 use_virtualenv("azmet")
+# Load python packages
 py_require(c("csv", "decimal", "math", "re"))
+# Source python script as R functions
 source_python("csvParseAndProcess.py")
 
 # Just a single site
@@ -126,6 +128,7 @@ files_df <- tibble(
   ),
 )
 
-files_updated <- pmap(files_df, updateDerived)
+files_updated <- pmap(files_df, updateDerived) |> list_c()
 
-# TODO: delete original derived data and replace with updated version?
+# Zip files for upload
+zip::zip("azmet_legacy_2020.zip", files_updated)
