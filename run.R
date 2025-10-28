@@ -128,7 +128,18 @@ files_df <- tibble(
   ),
 )
 
-files_updated <- pmap(files_df, updateDerived) |> list_c()
+# Remove obs_(hrly/dyly)_derived-(station).csv to only keep the updated versions
+derived_orig <- c(
+  path(
+    "legacy",
+    glue::glue("obs_dyly_derived-{snakecase::to_snake_case(station_names)}.csv")
+  ),
+  path(
+    "legacy",
+    glue::glue("obs_hrly_derived-{snakecase::to_snake_case(station_names)}.csv")
+  )
+)
+fs::file_delete(derived_orig)
 
 # Zip files for upload
-zip::zip("azmet_legacy_2020.zip", files_updated)
+zip::zip("azmet_legacy_2020.zip", files = "legacy")
