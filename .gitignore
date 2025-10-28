@@ -52,3 +52,4 @@ noaa_cache/
 .vscode/settings.json
 
 legacy/
+*.zip
