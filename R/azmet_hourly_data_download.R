@@ -115,12 +115,14 @@ azmet_hourly_data_download <- function(stn_list, stn_name, years = NULL) {
       suffix
     )
   }
-  urls_post_2002 <- paste0(
-    baseurl,
-    stn_no,
-    substr(as.character(stn_yrs[stn_yrs > 2002]), 3, 4),
-    suffix
-  )
+  if (any(stn_yrs > 2002)) {
+    urls_post_2002 <- paste0(
+      baseurl,
+      stn_no,
+      substr(as.character(stn_yrs[stn_yrs > 2002]), 3, 4),
+      suffix
+    )
+  }
 
   # DOWNLOAD DATA --------------------
 
@@ -168,20 +170,23 @@ azmet_hourly_data_download <- function(stn_list, stn_name, years = NULL) {
     data_pre_2002 <- tibble::tibble()
   }
 
-  data_post_2002 <- read_csv(
-    urls_post_2002,
-    col_names = col_names_post,
-    col_types = cols(
-      obs_year = col_character(),
-      obs_doy = col_character()
-    ),
-    id = "url",
-    trim_ws = TRUE
-  ) |>
-    mutate(across(c(obs_year, obs_doy), \(x) {
-      str_remove(x, "\\u001a") |> parse_integer()
-    }))
-
+  if (any(stn_yrs > 2002)) {
+    data_post_2002 <- read_csv(
+      urls_post_2002,
+      col_names = col_names_post,
+      col_types = cols(
+        obs_year = col_character(),
+        obs_doy = col_character()
+      ),
+      id = "url",
+      trim_ws = TRUE
+    ) |>
+      mutate(across(c(obs_year, obs_doy), \(x) {
+        str_remove(x, "\\u001a") |> parse_integer()
+      }))
+  } else {
+    data_post_2002 <- tibble::tibble()
+  }
   # Combine pre- and post-2003
   obs_hrly <- bind_rows(data_pre_2002, data_post_2002)
 
@@ -227,21 +232,37 @@ azmet_hourly_data_download <- function(stn_list, stn_name, years = NULL) {
       \(x) if_else(abs(x) %in% c(999, 999.9, 9999), NA_real_, x)
     ))
 
+  # Populate station ID in the format of "az01"
+  station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
+  station_id <- paste0("az", station_number)
+  obs_hrly <- obs_hrly |>
+    mutate(station_id = station_id, station_number = station_number)
+
   # Find and remove duplicate row entries
   obs_hrly <- distinct(obs_hrly)
 
   # Remove rows that are all NAs (we'll add any necessary ones back later)
   # (https://github.com/uace-azmet/legacy-data-migration/issues/7)
   obs_hrly <- obs_hrly |>
-    filter(!if_all(obs_hrly_temp_air:obs_hrly_derived_dwpt, is.na))
+    filter(!if_all(any_of(unique(c(col_names_pre, col_names_post))), is.na))
 
   # Warn if there are more than one row per hour
-  obs_duplicated <- obs_hrly |>
-    count(obs_year, obs_doy, obs_hour) |>
-    filter(n > 1)
-  if (nrow(obs_duplicated != 0)) {
+  obs_hrly_duplicated <- obs_hrly |>
+    group_by(obs_year, obs_doy, obs_hour) |>
+    filter(n() > 1) |>
+    tidyr::nest() |>
+    mutate(
+      cols_diff = map_chr(data, \(df) {
+        names(which(map_lgl(df, \(x) length(unique(x)) > 1))) |>
+          paste0(collapse = ", ")
+      }),
+      .after = obs_hour
+    ) |>
+    tidyr::unnest(data)
+
+  if (nrow(obs_hrly_duplicated > 0)) {
     cli::cli_warn(
-      "{stn_name}: {nrow(obs_duplicated)} hour{?s} {?has/have} multiple observations!"
+      "{stn_name}: {nrow(count(obs_hrly_duplicated))} hour{?s} {?has/have} multiple observations!"
     )
   }
 
@@ -271,12 +292,6 @@ azmet_hourly_data_download <- function(stn_list, stn_name, years = NULL) {
       #converts to character, but that's ok because we're done with it now
       obs_datetime = use_24_datetime(obs_datetime)
     )
-
-  # Populate station ID in the format of "az01"
-  station_number <- formatC(stn_info$stn_no[1], flag = 0, width = 2)
-  station_id <- paste0("az", station_number)
-  obs_hrly <- obs_hrly |>
-    mutate(station_id = station_id, station_number = station_number)
 
   # Populate defaults for some missing/empty columns
   obs_hrly <- obs_hrly |>
@@ -435,5 +450,9 @@ azmet_hourly_data_download <- function(stn_list, stn_name, years = NULL) {
       )
     )
 
-  return(list(obs_hrly = obs_hrly, obs_hrly_derived = obs_hrly_derived))
+  return(list(
+    obs_hrly = obs_hrly,
+    obs_hrly_derived = obs_hrly_derived,
+    obs_hrly_duplicated = obs_hrly_duplicated
+  ))
 }

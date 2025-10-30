@@ -284,12 +284,22 @@ azmet_daily_data_download <- function(stn_list, stn_name, years = NULL) {
     filter(!if_all(obs_dyly_temp_air_max:obs_dyly_derived_dwpt_mean, is.na))
 
   # Warn if there are more than one row per day
-  obs_duplicated <- obs_dyly |>
-    count(obs_year, obs_doy, ) |>
-    filter(n > 1)
-  if (nrow(obs_duplicated != 0)) {
+  obs_dyly_duplicated <- obs_dyly |>
+    group_by(obs_year, obs_doy) |>
+    filter(n() > 1) |>
+    tidyr::nest() |>
+    mutate(
+      cols_diff = map_chr(data, \(df) {
+        names(which(map_lgl(df, \(x) length(unique(x)) > 1))) |>
+          paste0(collapse = ", ")
+      }),
+      .after = obs_doy
+    ) |>
+    tidyr::unnest(data)
+
+  if (nrow(obs_dyly_duplicated > 0)) {
     cli::cli_warn(
-      "{stn_name}: {nrow(obs_duplicated)} day{?s} {?has/have} multiple observations!"
+      "{stn_name}: {nrow(count(obs_dyly_duplicated))} day{?s} {?has/have} multiple observations!"
     )
   }
 
@@ -554,5 +564,9 @@ azmet_daily_data_download <- function(stn_list, stn_name, years = NULL) {
     )
 
   # RETURN DATA AND CLOSE FUNCTION --------------------
-  return(list(obs_dyly = obs_dyly, obs_dyly_derived = obs_dyly_derived))
+  return(list(
+    obs_dyly = obs_dyly,
+    obs_dyly_derived = obs_dyly_derived,
+    obs_dyly_duplicated = obs_dyly_duplicated
+  ))
 }
