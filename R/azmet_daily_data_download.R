@@ -536,7 +536,6 @@ azmet_daily_data_download <- function(stn_list, stn_name, years = NULL) {
       dplyr::across(
         c(
           obs_dyly_precip_total,
-          dplyr::starts_with("obs_dyly_relative_humidity_"),
           dplyr::starts_with("obs_dyly_temp_air_"),
           dplyr::starts_with("obs_dyly_temp_soil_"),
           dplyr::starts_with("obs_dyly_wind_spd_"),
@@ -553,6 +552,7 @@ azmet_daily_data_download <- function(stn_list, stn_name, years = NULL) {
       ),
       dplyr::across(
         c(
+          dplyr::starts_with("obs_dyly_relative_humidity_"),
           dplyr::starts_with("obs_dyly_wind_vector_dir"),
           obs_dyly_wind_2min_vector_dir,
           obs_dyly_wind_2min_timestamp
